@@ -1,3 +1,7 @@
+-- LIB MODE GUARD
+local __LIB_MODE = (getgenv and getgenv().SUMOHOOK_LIB_MODE) or false
+
+
 -- PRE-EXEC CHECK
 --if getreg().SH_UNLOAD then
 --	getreg().SH_UNLOAD()
@@ -2510,7 +2514,14 @@ local NGToggle = VisualsM:AddToggle("Network Graph", {
 	})
 end
 
-Interface:AddSettings()
+if not __LIB_MODE then
+    -- Обычный запуск (как сейчас)
+    Interface:AddSettings()
+    Interface:Init("Sumohook", "Sumohook\\", Date(os.time()))
+else
+    -- Режим библиотеки: ничего не рисуем автоматически, просто отдаём интерфейс наружу
+    return Interface
+end
 
-Interface:Init("Sumohook", "Sumohook\\", Date("%d %b %Y"))
+
 -- Interface:Log(Format("Initialized in %.2f", Clock() - StartTime))
