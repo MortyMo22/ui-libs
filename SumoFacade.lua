@@ -1,5 +1,5 @@
 -- SumoFacade.lua
--- Фасад под DiscordLib-стиль, поверх SUMOHOOK.lua
+-- Фасад под DiscordLib-стиль, поверх SUMOHOOK.lua (с lib-режимом)
 
 local CORE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/SUMOHOOK.lua"
 
@@ -10,7 +10,33 @@ getgenv().SUMOHOOK_LIB_MODE = true
 local Interface = loadstring(game:HttpGet(CORE_URL))()
 assert(Interface, "SUMOHOOK core did not return Interface (проверь патч в конце файла).")
 
--- Обёртка в удобный API
+-- универсальный Notification-хелпер
+local function safeNotify(title, text, button)
+    -- 1) нативное уведомление библиотеки (если есть)
+    if typeof(Interface.Notification) == "function" then
+        Interface:Notification(title, text, button)
+        return
+    end
+    if typeof(Interface.Notify) == "function" then
+        Interface:Notify(title, text, button)
+        return
+    end
+    if typeof(Interface.Message) == "function" then
+        Interface:Message(title, text, button)
+        return
+    end
+    -- 2) SetCore фолбэк (чтобы точно было видно)
+    local StarterGui = game:GetService("StarterGui")
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = tostring(title or "Notification"),
+            Text = tostring(text or ""),
+            Duration = 4,
+            Button1 = tostring(button or "OK")
+        })
+    end)
+end
+
 local function makeFacade(Interface)
     local Facade = {}
 
@@ -28,8 +54,10 @@ local function makeFacade(Interface)
                 local Section = Tab:AddSection(sectionName or "Section", side or "Left")
                 local Channel = {}
 
-                function Channel:Button(label, cb)
-                    return Section:AddButton(label, { Callback = cb })
+                -- Элементы
+                function Channel:Button(label, optsOrCb)
+                    local opts = type(optsOrCb) == "function" and { Callback = optsOrCb } or (optsOrCb or {})
+                    return Section:AddButton(label, opts)
                 end
                 function Channel:Toggle(label, opts)
                     return Section:AddToggle(label, opts or {})
@@ -47,6 +75,7 @@ local function makeFacade(Interface)
                     return Section:AddColor(label, opts or {})
                 end
                 function Channel:Seperator()
+                    -- Если в ядре есть реальный сепаратор — можно заменить на него.
                     return Section:AddButton(" ", { Callback = function() end, Disabled = true })
                 end
 
@@ -56,11 +85,12 @@ local function makeFacade(Interface)
             return Server
         end
 
-        -- ВАЖНО: теперь Init вызывается вручную после построения UI
+        -- Рендер
         function Win:Init()
             Interface:Init(title or "Window", nil, extra)
         end
 
+        -- Хелперы
         function Win:Flags()
             return Interface.Flags
         end
@@ -71,10 +101,9 @@ local function makeFacade(Interface)
             Interface:Unload()
         end
 
-        function Facade:Notification(title, text, button)
-            if Interface.Notification then
-                Interface:Notification(title, text, button)
-            end
+        -- Уведомления через фасад
+        function Facade:Notification(t, msg, btn)
+            safeNotify(t, msg, btn)
         end
 
         return Win
