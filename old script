@@ -1,0 +1,1296 @@
+    local library = loadstring(game:HttpGet("https://raw.githubusercontent.com/bloodball/-back-ups-for-libs/main/discord"))()
+
+local window = library:Window("LuckyWinner Gui")
+
+
+
+local Tab = window:Server("Blox Loot", "")
+
+local Section = Tab:Channel("Local Player")
+
+--// ================================
+--// Настройки
+--// ================================
+getgenv().InfJumpEnabled = false
+getgenv().InfJumpPower = 50 -- сила прыжка по умолчанию
+
+--// ================================
+--// Сервисы
+--// ================================
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+
+--// ================================
+--// Логика Inf Jump
+--// ================================
+-- Подписка на событие прыжка
+UserInputService.JumpRequest:Connect(function()
+    if getgenv().InfJumpEnabled then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            hum.JumpPower = getgenv().InfJumpPower
+        end
+    end
+end)
+
+-- При респавне персонажа сохраняем возможность прыжка
+LocalPlayer.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid")
+    if getgenv().InfJumpEnabled then
+        -- ничего особого делать не нужно, JumpRequest всё равно сработает
+        print("[InfJump] Персонаж возрождён, InfJump активен")
+    end
+end)
+
+--// ================================
+--// UI
+--// ================================
+-- Переключатель Inf Jump
+Section:Toggle(
+    "Inf Jump",
+    false, -- стартовое состояние
+    function(state)
+        getgenv().InfJumpEnabled = state
+        print("[InfJump] Состояние:", state and "ON" or "OFF")
+    end
+)
+
+
+
+
+--// ================================
+--// ESP для игроков с корректной обработкой новых входов
+--// ================================
+
+getgenv().ESP_Enabled = false
+getgenv().ESP_Color = Color3.fromRGB(255, 0, 0)
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local espObjects = {}  -- [Player] = {Billboard=..., Highlight=...}
+local espConns = {}    -- [Player] = {CharacterAdded=...}
+
+-- Создание ESP на персонаже
+local function AttachESP(player, character)
+    if not getgenv().ESP_Enabled then return end
+    if not character or player == LocalPlayer then return end
+
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local hum = character:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+
+    -- Удалим старое
+    if espObjects[player] then
+        for _, obj in pairs(espObjects[player]) do
+            if obj and obj.Destroy then obj:Destroy() end
+        end
+    end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0, 100, 0, 30)
+    billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    billboard.MaxDistance = 0
+    billboard.Parent = hrp
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.TextColor3 = getgenv().ESP_Color
+    nameLabel.TextStrokeTransparency = 0.2
+    nameLabel.TextScaled = true
+    nameLabel.Font = Enum.Font.SourceSansBold
+    nameLabel.Text = player.Name
+    nameLabel.Parent = billboard
+
+    local hpLabel = Instance.new("TextLabel")
+    hpLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    hpLabel.Position = UDim2.new(0, 0, 0.5, 0)
+    hpLabel.BackgroundTransparency = 1
+    hpLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+    hpLabel.TextStrokeTransparency = 0.2
+    hpLabel.TextScaled = true
+    hpLabel.Font = Enum.Font.SourceSansBold
+    hpLabel.Text = string.format("%d / %d", hum.Health, hum.MaxHealth)
+    hpLabel.Parent = billboard
+
+    hum.HealthChanged:Connect(function(hp)
+        hpLabel.Text = string.format("%d / %d", hp, hum.MaxHealth)
+    end)
+
+    local highlight = Instance.new("Highlight")
+    highlight.FillTransparency = 1
+    highlight.OutlineColor = getgenv().ESP_Color
+    highlight.OutlineTransparency = 0
+    highlight.Parent = character
+
+    espObjects[player] = {Billboard = billboard, Highlight = highlight}
+end
+
+-- Удаление ESP
+local function RemoveESP(player)
+    if espObjects[player] then
+        for _, obj in pairs(espObjects[player]) do
+            if obj and obj.Destroy then obj:Destroy() end
+        end
+        espObjects[player] = nil
+    end
+end
+
+-- Подключение игрока к системе
+local function TrackPlayer(player)
+    if player == LocalPlayer then return end
+    if espConns[player] then return end
+
+    local function onChar(char)
+        if getgenv().ESP_Enabled then
+            -- ждём HRP и Humanoid
+            char:WaitForChild("HumanoidRootPart", 5)
+            char:WaitForChild("Humanoid", 5)
+            AttachESP(player, char)
+        else
+            RemoveESP(player)
+        end
+    end
+
+    espConns[player] = {
+        CharacterAdded = player.CharacterAdded:Connect(onChar)
+    }
+
+    if player.Character then
+        onChar(player.Character)
+    end
+end
+
+local function UntrackPlayer(player)
+    RemoveESP(player)
+    if espConns[player] then
+        for _, c in pairs(espConns[player]) do
+            if c and c.Disconnect then c:Disconnect() end
+        end
+        espConns[player] = nil
+    end
+end
+
+-- Подписки
+for _, plr in ipairs(Players:GetPlayers()) do
+    TrackPlayer(plr)
+end
+
+Players.PlayerAdded:Connect(TrackPlayer)
+Players.PlayerRemoving:Connect(UntrackPlayer)
+
+-- Управление
+local function EnableESP()
+    if getgenv().ESP_Enabled then return end
+    getgenv().ESP_Enabled = true
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            AttachESP(plr, plr.Character)
+        end
+    end
+end
+
+local function DisableESP()
+    if not getgenv().ESP_Enabled then return end
+    getgenv().ESP_Enabled = false
+    for plr in pairs(espObjects) do
+        RemoveESP(plr)
+    end
+end
+
+-- UI Toggle
+Section:Toggle("ESP Players", false, function(state)
+    if state then
+        EnableESP()
+    else
+        DisableESP()
+    end
+end)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+--// ================================
+--// Настройки
+--// ================================
+getgenv().LoopWalkSpeedValue = 16 -- стартовое значение
+getgenv().LoopWalkSpeedEnabled = true
+
+--// ================================
+--// Сервисы
+--// ================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+--// ================================
+--// Утилита: установка WalkSpeed
+--// ================================
+local function SetWalkSpeed(value)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.WalkSpeed = value
+    end
+end
+
+--// ================================
+--// Поддержка Loop WalkSpeed
+--// ================================
+-- При респавне персонажа сразу выставляем скорость
+LocalPlayer.CharacterAdded:Connect(function(char)
+    char:WaitForChild("Humanoid")
+    task.wait(0.1)
+    if getgenv().LoopWalkSpeedEnabled then
+        SetWalkSpeed(getgenv().LoopWalkSpeedValue)
+    end
+end)
+
+-- Цикл проверки (раз в кадр)
+RunService.Heartbeat:Connect(function()
+    if getgenv().LoopWalkSpeedEnabled then
+        SetWalkSpeed(getgenv().LoopWalkSpeedValue)
+    end
+end)
+
+--// ================================
+--// UI
+--// ================================
+local walkSpeedSlider =
+    Section:Slider(
+        "Walk Speed",
+        0,      -- минимальное значение
+        200,    -- максимальное значение
+        getgenv().LoopWalkSpeedValue, -- стартовое значение
+        function(value)
+            getgenv().LoopWalkSpeedValue = value
+            SetWalkSpeed(value)
+        end
+    )
+
+Section:Button(
+    "Reset Walk Speed",
+    function()
+        getgenv().LoopWalkSpeedValue = 16
+        walkSpeedSlider:Change(16)
+        SetWalkSpeed(16)
+    end
+)
+
+
+
+
+
+
+
+
+
+local Section = Tab:Channel("Item Collector")
+
+--// ================================
+--// Auto Loot
+--// ================================
+
+getgenv().AutoLootEnabled = false
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local LootFolder = workspace:WaitForChild("Runtime"):WaitForChild("LootPoints")
+
+local autoLootConn = nil
+local lastUpdate = 0
+
+-- Проверка предмета
+local function IsValidLoot(obj)
+    if not obj or not obj:IsA("Model") then return false end
+    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+    return prompt ~= nil
+end
+
+-- Поиск ближайшего предмета
+local function GetClosestLoot()
+    local char = LocalPlayer.Character
+    local myHRP = char and char:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return nil end
+
+    local closest, closestDist = nil, math.huge
+    for _, obj in ipairs(LootFolder:GetChildren()) do
+        if IsValidLoot(obj) then
+            local hrp = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
+            if hrp then
+                local dist = (myHRP.Position - hrp.Position).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closest = obj
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- Телепорт и активация prompt
+local function LootItem(obj)
+    local char = LocalPlayer.Character
+    local myHRP = char and char:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    local part = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
+    local prompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if not part or not prompt then return end
+
+    -- Телепортируемся к предмету
+    myHRP.CFrame = part.CFrame + Vector3.new(0, 2, 0)
+
+    -- Активируем prompt
+    task.spawn(function()
+        fireproximityprompt(prompt, 1) -- 1 = длительность удержания
+    end)
+end
+
+-- Включение
+local function EnableAutoLoot()
+    if getgenv().AutoLootEnabled then return end
+    getgenv().AutoLootEnabled = true
+
+    autoLootConn = RunService.Heartbeat:Connect(function(dt)
+        lastUpdate += dt
+        if lastUpdate < 0.2 then return end
+        lastUpdate = 0
+
+        local target = GetClosestLoot()
+        if target then
+            LootItem(target)
+        end
+    end)
+
+    print("[AutoLoot] Включено.")
+end
+
+-- Выключение
+local function DisableAutoLoot()
+    if autoLootConn then
+        autoLootConn:Disconnect()
+        autoLootConn = nil
+    end
+    getgenv().AutoLootEnabled = false
+    print("[AutoLoot] Выключено.")
+end
+
+-- UI Toggle
+Section:Toggle("Auto Loot", false, function(state)
+    if state then
+        EnableAutoLoot()
+    else
+        DisableAutoLoot()
+    end
+end)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local Section = Tab:Channel("Mob")
+
+--// =========================================
+--// Скрипт: Стабильный хитбокс для Mob (фикс респавна и прозрачности)
+--// =========================================
+
+--// ================================
+--// Настройки
+--// ================================
+getgenv().Mob_HitboxSize = 40
+getgenv().Mob_HitboxColor = Color3.fromRGB(162, 0, 162)
+-- Прозрачность в процентах (0..100), конвертируется в 0..1 при применении
+getgenv().Mob_HitboxTransparencyPercent = 90
+getgenv().Mob_HitboxEnabled = false
+
+--// ================================
+--// Сервисы
+--// ================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+--// ================================
+--// Целевой контейнер Mob
+--// ================================
+local MobContainer = nil
+do
+    local world1 = Workspace:FindFirstChild("World1")
+    local part1 = world1 and world1:FindFirstChild("Part1")
+    local enemySpawnPoints = part1 and part1:FindFirstChild("EnemySpawnPoints")
+    MobContainer = enemySpawnPoints
+
+    if not MobContainer then
+        warn("[Mob Hitbox] Не найден путь workspace.World1.Part1.EnemySpawnPoints. Использую Workspace (менее оптимально).")
+        MobContainer = Workspace
+    else
+        print("[Mob Hitbox] Контейнер Mob:", MobContainer:GetFullName())
+    end
+end
+
+--// ================================
+--// Внутреннее состояние
+--// ================================
+local updateConn = nil
+local trackAddedConn = nil
+local trackRemovingConn = nil
+
+local mobSet = {}           -- [Model] = true
+local mobConns = {}         -- [Model] = { AncestryChanged=conn, ChildAdded=conn, HumDied=conn }
+local updateAccumulator = 0
+local updateInterval = 0.1
+
+--// ================================
+--// Утилиты
+--// ================================
+local function isPlayerModel(model)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        local char = plr.Character
+        if char and char == model then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsMobModel(model)
+    if not model or not model:IsA("Model") then return false end
+    if isPlayerModel(model) then return false end
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    return humanoid ~= nil and hrp ~= nil
+end
+
+local function FindMobModelInNode(node)
+    if not node then return nil end
+    if node:IsA("Model") and IsMobModel(node) then
+        return node
+    end
+    for _, desc in ipairs(node:GetDescendants()) do
+        if desc:IsA("Model") and IsMobModel(desc) then
+            return desc
+        end
+    end
+    return nil
+end
+
+local function ApplyHitbox(model)
+    if not model or not mobSet[model] then return end
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local size = tonumber(getgenv().Mob_HitboxSize) or 20
+    local percent = tonumber(getgenv().Mob_HitboxTransparencyPercent) or 75
+    percent = math.clamp(percent, 0, 100)
+    local transparency = percent / 100
+    local color = getgenv().Mob_HitboxColor or Color3.fromRGB(255, 100, 100)
+
+    hrp.Size = Vector3.new(size, size, size)
+    hrp.Transparency = transparency
+    hrp.CanCollide = false
+    hrp.Color = color
+end
+
+local function ResetHRP(model)
+    if not model then return end
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.Size = Vector3.new(2, 2, 1)
+        hrp.Transparency = 1
+        hrp.CanCollide = true
+        hrp.Color = Color3.fromRGB(163, 162, 165)
+    end
+end
+
+local function DisconnectModelConns(model)
+    local conns = mobConns[model]
+    if conns then
+        for _, c in pairs(conns) do
+            if c and c.Disconnect then
+                c:Disconnect()
+            end
+        end
+        mobConns[model] = nil
+    end
+end
+
+local function RegisterMobModel(model)
+    if not model or not model:IsA("Model") then return end
+    if mobSet[model] then return end
+    if isPlayerModel(model) then return end
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+
+    mobSet[model] = true
+
+    local ancestryConn = model.AncestryChanged:Connect(function(_, parent)
+        if not model:IsDescendantOf(MobContainer) or parent == nil then
+            ResetHRP(model)
+            mobSet[model] = nil
+            DisconnectModelConns(model)
+            print("[Mob Hitbox] Модель ушла/удалена:", model:GetFullName())
+        end
+    end)
+
+    local childAddedConn = model.ChildAdded:Connect(function(child)
+        if child and child.Name == "HumanoidRootPart" and child:IsA("BasePart") then
+            if getgenv().Mob_HitboxEnabled then
+                task.defer(function()
+                    ApplyHitbox(model)
+                    print("[Mob Hitbox] HRP появился, хитбокс применён:", model:GetFullName())
+                end)
+            end
+        end
+    end)
+
+    local humDiedConn = humanoid.Died:Connect(function()
+        print("[Mob Hitbox] Mob умер:", model:GetFullName())
+        task.spawn(function()
+            local maxWait = 5.0
+            local elapsed = 0.0
+            local step = 0.1
+            while elapsed < maxWait do
+                local hrp = model:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    if getgenv().Mob_HitboxEnabled then
+                        ApplyHitbox(model)
+                        print("[Mob Hitbox] Хитбокс применён после респавна:", model:GetFullName())
+                    end
+                    return
+                end
+                elapsed = elapsed + step
+                task.wait(step)
+            end
+            warn("[Mob Hitbox] HRP не появился в течение ожидания:", model:GetFullName())
+        end)
+    end)
+
+    mobConns[model] = {
+        AncestryChanged = ancestryConn,
+        ChildAdded = childAddedConn,
+        HumDied = humDiedConn
+    }
+
+    if getgenv().Mob_HitboxEnabled and model:FindFirstChild("HumanoidRootPart") then
+        ApplyHitbox(model)
+    end
+
+    print("[Mob Hitbox] Зарегистрирован Mob:", model:GetFullName())
+end
+
+local function UnregisterMobModel(model)
+    if not model or not mobSet[model] then return end
+    ResetHRP(model)
+    mobSet[model] = nil
+    DisconnectModelConns(model)
+end
+
+local function InitialScan()
+    local found = 0
+    for _, child in ipairs(MobContainer:GetChildren()) do
+        local model = FindMobModelInNode(child)
+        if model and not mobSet[model] then
+            RegisterMobModel(model)
+            found = found + 1
+        end
+    end
+    for _, desc in ipairs(MobContainer:GetDescendants()) do
+        if desc:IsA("Model") and not mobSet[desc] then
+            if not isPlayerModel(desc) then
+                local hum = desc:FindFirstChildOfClass("Humanoid")
+                if hum then
+                    RegisterMobModel(desc)
+                    found = found + 1
+                end
+            end
+        end
+    end
+    print(string.format("[Mob Hitbox] Инициализация: зарегистрировано %d Mob.", found))
+end
+
+local function StartTracking()
+    InitialScan()
+
+    trackAddedConn = MobContainer.DescendantAdded:Connect(function(obj)
+        if obj:IsA("Model") then
+            RegisterMobModel(obj)
+        else
+            local model = FindMobModelInNode(obj)
+            if model then
+                RegisterMobModel(model)           
+            end
+        end
+    end)
+
+    trackRemovingConn = MobContainer.DescendantRemoving:Connect(function(obj)
+        if obj:IsA("Model") and mobSet[obj] then
+            UnregisterMobModel(obj)
+            print("[Mob Hitbox] Модель удалена:", obj:GetFullName())
+        end
+    end)
+
+        print("[Mob Hitbox] Трекинг включён для:", MobContainer:GetFullName())
+end
+
+local function StopTracking()
+    if trackAddedConn then
+        trackAddedConn:Disconnect()
+        trackAddedConn = nil
+    end
+    if trackRemovingConn then
+        trackRemovingConn:Disconnect()
+        trackRemovingConn = nil
+    end
+    print("[Mob Hitbox] Трекинг остановлен.")
+end
+
+-- Применение ко всем зарегистрированным Mob
+local function ApplyToAll()
+    for model, present in pairs(mobSet) do
+        if present then
+            ApplyHitbox(model)
+        end
+    end
+end
+
+-- Включение
+local function EnableMobHitbox()
+    if getgenv().Mob_HitboxEnabled or updateConn ~= nil then return end
+    getgenv().Mob_HitboxEnabled = true
+    updateAccumulator = 0
+
+    -- Мгновенное применение
+    ApplyToAll()
+
+    updateConn = RunService.Heartbeat:Connect(function(dt)
+        updateAccumulator = updateAccumulator + dt
+        if updateAccumulator >= updateInterval then
+            updateAccumulator = 0
+            ApplyToAll()
+        end
+    end)
+
+    print("[Mob Hitbox] Включено.")
+end
+
+-- Выключение
+local function DisableMobHitbox()
+    if updateConn then
+        updateConn:Disconnect()
+        updateConn = nil
+    end
+    getgenv().Mob_HitboxEnabled = false
+
+    -- Сбросим у всех текущих
+    for model, present in pairs(mobSet) do
+        if present then
+            ResetHRP(model)
+        end
+    end
+    print("[Mob Hitbox] Выключено.")
+end
+
+-- Запуск трекинга
+StartTracking()
+
+--// ================================
+--// UI: кнопки и слайдеры
+--// ================================
+Section:Button("Enable Mob Hitbox", function()
+    EnableMobHitbox()
+end)
+
+Section:Button("Disable Mob Hitbox", function()
+    DisableMobHitbox()
+end)
+
+
+
+local sizeSlider = Section:Slider(
+    "Mob Hitbox Size",
+    1,
+    100,
+    getgenv().Mob_HitboxSize,
+    function(value)
+        -- гарантируем число
+        local v = tonumber(value) or getgenv().Mob_HitboxSize
+        getgenv().Mob_HitboxSize = math.clamp(v, 1, 100)
+    end
+)
+
+local transpSlider = Section:Slider(
+    "Mob Hitbox Transparency (%)",
+    0,
+    100,
+    getgenv().Mob_HitboxTransparencyPercent,
+    function(value)
+        -- некоторые UI-слайдеры передают nil при быстрых движениях — страхуемся
+        local v = tonumber(value)
+        if not v then return end
+        getgenv().Mob_HitboxTransparencyPercent = math.clamp(math.floor(v + 0.5), 0, 100)
+    end
+)
+
+Section:Colorpicker(
+    "Mob Hitbox Color",
+    getgenv().Mob_HitboxColor,
+    function(color)
+        if typeof(color) == "Color3" then
+            getgenv().Mob_HitboxColor = color
+        end
+    end
+)
+
+
+
+--// ================================
+--// Auto Farm Mobs (финальная версия)
+--// ================================
+
+getgenv().Mob_AutoFarmEnabled = false
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local currentTarget = nil
+local autoFarmConn = nil
+local lastUpdate = 0
+
+-- Проверка моба
+local function IsValidMob(model)
+    if not model or not model:IsA("Model") then return false end
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    return hum and hum.Health > 0 and hrp
+end
+
+-- Поиск новой цели
+local function PickNewTarget()
+    if not mobSet then return nil end
+    for model, present in pairs(mobSet) do
+        if present and IsValidMob(model) then
+            return model
+        end
+    end
+    return nil
+end
+
+-- Телепорт внутрь хитбокса
+local function TeleportToMob(model)
+    local char = LocalPlayer.Character
+    local myHRP = char and char:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local sizeY
+    if getgenv().Mob_HitboxEnabled then
+        sizeY = getgenv().Mob_HitboxSize
+    else
+        sizeY = hrp.Size.Y
+    end
+
+    -- Чуть ниже верхней грани
+    local targetPos = hrp.Position + Vector3.new(0, (sizeY / 2) - 2, 0)
+
+    -- Ставим CFrame, смотрим на моба
+    myHRP.CFrame = CFrame.new(targetPos, hrp.Position)
+
+    -- Обнуляем скорость, чтобы не накапливалась
+    myHRP.Velocity = Vector3.zero
+    myHRP.RotVelocity = Vector3.zero
+end
+
+-- Включение
+local function EnableMobAutoFarm()
+    if getgenv().Mob_AutoFarmEnabled then return end
+    getgenv().Mob_AutoFarmEnabled = true
+    currentTarget = PickNewTarget()
+
+    autoFarmConn = RunService.Heartbeat:Connect(function(dt)
+        lastUpdate += dt
+        if lastUpdate < 0.1 then return end
+        lastUpdate = 0
+
+        local char = LocalPlayer.Character
+        local myHRP = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not myHRP or not hum then return end
+
+        -- отключаем падение
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+
+        -- если цель умерла → новая
+        if not currentTarget or not IsValidMob(currentTarget) then
+            currentTarget = PickNewTarget()
+        end
+
+        if currentTarget then
+            TeleportToMob(currentTarget)
+        end
+    end)
+
+    print("[Mob AutoFarm] Включено.")
+end
+
+-- Выключение
+local function DisableMobAutoFarm()
+    if autoFarmConn then
+        autoFarmConn:Disconnect()
+        autoFarmConn = nil
+    end
+    getgenv().Mob_AutoFarmEnabled = false
+    currentTarget = nil
+
+    -- возвращаем управление персонажу
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+
+    print("[Mob AutoFarm] Выключено.")
+end
+
+-- UI
+Section:Toggle("Auto Farm Mobs", false, function(state)
+    if state then
+        EnableMobAutoFarm()
+    else
+        DisableMobAutoFarm()
+    end
+end)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local Section = Tab:Channel("PvP")
+
+
+--// ================================
+--// Настройки
+--// ================================
+getgenv().Player_HitboxSize = 40
+getgenv().Player_HitboxColor = Color3.fromRGB(255, 255, 255)
+getgenv().Player_HitboxTransparencyPercent = 90
+getgenv().Player_HitboxEnabled = false
+
+--// ================================
+--// Сервисы
+--// ================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local updateConn = nil
+local playerSet = {}
+
+--// ================================
+--// Утилиты
+--// ================================
+local function ApplyPlayerHitbox(model)
+    if not model or not playerSet[model] then return end
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local size = tonumber(getgenv().Player_HitboxSize) or 20
+    local percent = tonumber(getgenv().Player_HitboxTransparencyPercent) or 75
+    percent = math.clamp(percent, 0, 100)
+    local transparency = percent / 100
+    local color = getgenv().Player_HitboxColor or Color3.fromRGB(255, 100, 100)
+
+    hrp.Size = Vector3.new(size, size, size)
+    hrp.Transparency = transparency
+    hrp.CanCollide = false
+    hrp.Color = color
+end
+
+local function ResetPlayerHRP(model)
+    if not model then return end
+    local hrp = model:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        hrp.Size = Vector3.new(2, 2, 1)
+        hrp.Transparency = 1
+        hrp.CanCollide = true
+        hrp.Color = Color3.fromRGB(163, 162, 165)
+    end
+end
+
+-- Регистрация игрока
+local function RegisterPlayer(plr)
+    if plr == Players.LocalPlayer then return end
+    if playerSet[plr] then return end
+
+    local function onCharacterAdded(char)
+        playerSet[char] = true
+        if getgenv().Player_HitboxEnabled then
+            ApplyPlayerHitbox(char)
+        end
+
+        -- Если HRP появится позже
+        char.ChildAdded:Connect(function(child)
+            if child.Name == "HumanoidRootPart" then
+                if getgenv().Player_HitboxEnabled then
+                    ApplyPlayerHitbox(char)
+                end
+            end
+        end)
+
+        -- При смерти ждём новый HRP
+        local hum = char:WaitForChild("Humanoid", 5)
+        if hum then
+            hum.Died:Connect(function()
+                task.spawn(function()
+                    repeat task.wait(0.2) until char:FindFirstChild("HumanoidRootPart")
+                    if getgenv().Player_HitboxEnabled then
+                        ApplyPlayerHitbox(char)
+                    end
+                end)
+            end)
+        end
+    end
+
+    if plr.Character then
+        onCharacterAdded(plr.Character)
+    end
+    plr.CharacterAdded:Connect(onCharacterAdded)
+end
+
+-- Скан всех игроков
+for _, plr in ipairs(Players:GetPlayers()) do
+    RegisterPlayer(plr)
+end
+
+Players.PlayerAdded:Connect(RegisterPlayer)
+Players.PlayerRemoving:Connect(function(plr)
+    if playerSet[plr] then
+        playerSet[plr] = nil
+    end
+end)
+
+-- Применение ко всем
+local function ApplyToAllPlayers()
+    for char, present in pairs(playerSet) do
+        if present then
+            ApplyPlayerHitbox(char)
+        end
+    end
+end
+
+-- Включение
+local function EnablePlayerHitbox()
+    if getgenv().Player_HitboxEnabled or updateConn ~= nil then return end
+    getgenv().Player_HitboxEnabled = true
+
+    ApplyToAllPlayers()
+
+    updateConn = RunService.Heartbeat:Connect(function()
+        ApplyToAllPlayers()
+    end)
+
+    print("[Player Hitbox] Включено.")
+end
+
+-- Выключение
+local function DisablePlayerHitbox()
+    if updateConn then
+        updateConn:Disconnect()
+        updateConn = nil
+    end
+    getgenv().Player_HitboxEnabled = false
+
+    for char, present in pairs(playerSet) do
+        if present then
+            ResetPlayerHRP(char)
+        end
+    end
+    print("[Player Hitbox] Выключено.")
+end
+
+--// ================================
+--// UI
+--// ================================
+Section:Button("Enable Player Hitbox", function()
+    EnablePlayerHitbox()
+end)
+
+
+Section:Button("Disable Player Hitbox", function()
+    DisablePlayerHitbox()
+end)
+
+
+local sizeSlider = Section:Slider(
+    "Player Hitbox Size",
+    1,
+    100,
+    getgenv().Player_HitboxSize,
+    function(value)
+        local v = tonumber(value) or getgenv().Player_HitboxSize
+        getgenv().Player_HitboxSize = math.clamp(v, 1, 100)
+    end
+)
+
+local transpSlider = Section:Slider(
+    "Player Hitbox Transparency (%)",
+    0,
+    100,
+    getgenv().Player_HitboxTransparencyPercent,
+    function(value)
+        local v = tonumber(value)
+        if not v then return end
+        getgenv().Player_HitboxTransparencyPercent = math.clamp(math.floor(v + 0.5), 0, 100)
+    end
+)
+
+Section:Colorpicker(
+    "Player Hitbox Color",
+    getgenv().Player_HitboxColor,
+    function(color)
+        if typeof(color) == "Color3" then
+            getgenv().Player_HitboxColor = color
+        end
+    end
+)
+
+
+
+
+
+--// ================================
+--// Auto Farm Players (финальная версия)
+--// ================================
+
+getgenv().Player_AutoFarmEnabled = false
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local currentTarget = nil
+local autoFarmConn = nil
+local lastUpdate = 0
+
+-- Проверка игрока
+local function IsValidPlayer(plr)
+    if not plr or plr == LocalPlayer then return false end
+    local char = plr.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    return hum and hum.Health > 0 and hrp
+end
+
+-- Поиск новой цели
+local function PickNewTarget()
+    local closest = nil
+    local closestDist = math.huge
+    local myHRP = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return nil end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if IsValidPlayer(plr) then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            local dist = (myHRP.Position - hrp.Position).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closest = plr
+            end
+        end
+    end
+    return closest
+end
+
+-- Телепорт внутрь хитбокса игрока
+local function TeleportToPlayer(plr)
+    local char = LocalPlayer.Character
+    local myHRP = char and char:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local sizeY
+    if getgenv().Player_HitboxEnabled then
+        sizeY = getgenv().Player_HitboxSize
+    else
+        sizeY = hrp.Size.Y
+    end
+
+    -- Чуть ниже верхней грани
+    local targetPos = hrp.Position + Vector3.new(0, (sizeY / 2) - 2, 0)
+
+    -- Ставим CFrame, смотрим на игрока
+    myHRP.CFrame = CFrame.new(targetPos, hrp.Position)
+
+    -- Обнуляем скорость
+    myHRP.Velocity = Vector3.zero
+    myHRP.RotVelocity = Vector3.zero
+end
+
+-- Включение
+local function EnablePlayerAutoFarm()
+    if getgenv().Player_AutoFarmEnabled then return end
+    getgenv().Player_AutoFarmEnabled = true
+    currentTarget = PickNewTarget()
+
+    autoFarmConn = RunService.Heartbeat:Connect(function(dt)
+        lastUpdate += dt
+        if lastUpdate < 0.1 then return end
+        lastUpdate = 0
+
+        local char = LocalPlayer.Character
+        local myHRP = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        if not myHRP or not hum then return end
+
+        -- отключаем падение
+        hum:ChangeState(Enum.HumanoidStateType.Physics)
+
+        -- если цель умерла → новая
+        if not currentTarget or not IsValidPlayer(currentTarget) then
+            currentTarget = PickNewTarget()
+        end
+
+        if currentTarget then
+            TeleportToPlayer(currentTarget)
+        end
+    end)
+
+    print("[Player AutoFarm] Включено.")
+end
+
+-- Выключение
+local function DisablePlayerAutoFarm()
+    if autoFarmConn then
+        autoFarmConn:Disconnect()
+        autoFarmConn = nil
+    end
+    getgenv().Player_AutoFarmEnabled = false
+    currentTarget = nil
+
+    -- возвращаем управление персонажу
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+
+    print("[Player AutoFarm] Выключено.")
+end
+
+-- UI
+Section:Toggle("Auto Farm Players", false, function(state)
+    if state then
+        EnablePlayerAutoFarm()
+    else
+        DisablePlayerAutoFarm()
+    end
+end)
+
+
+
+
+
+
+
+local Section = Tab:Channel("INFO")
+
+Section:Label("More info you can find in my discord!")
+Section:Label("The script will update, so more features will be soon!")
+
+Section:Button("Copy Discord", function()
+    setclipboard("https://discord.gg/aBeQ6MEW")
+    print("Discord link has been copied to the clipboard!")
+end)
