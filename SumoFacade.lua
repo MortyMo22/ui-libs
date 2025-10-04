@@ -1,31 +1,16 @@
--- SumoFacade.lua
--- Фасад под DiscordLib-стиль, поверх SUMOHOOK.lua (с lib-режимом)
+-- SumoFacade.lua (адаптивный фасад для SUMOHOOK.lua)
 
 local CORE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/SUMOHOOK.lua"
 
--- Включаем lib-режим для ядра
 getgenv().SUMOHOOK_LIB_MODE = true
-
--- Загружаем ядро и получаем Interface
 local Interface = loadstring(game:HttpGet(CORE_URL))()
-assert(Interface, "SUMOHOOK core did not return Interface (проверь патч в конце файла).")
+assert(Interface, "SUMOHOOK core did not return Interface")
 
--- универсальный Notification-хелпер
+-- универсальный Notify
 local function safeNotify(title, text, button)
-    -- 1) нативное уведомление библиотеки (если есть)
     if typeof(Interface.Notification) == "function" then
-        Interface:Notification(title, text, button)
-        return
+        Interface:Notification(title, text, button); return
     end
-    if typeof(Interface.Notify) == "function" then
-        Interface:Notify(title, text, button)
-        return
-    end
-    if typeof(Interface.Message) == "function" then
-        Interface:Message(title, text, button)
-        return
-    end
-    -- 2) SetCore фолбэк (чтобы точно было видно)
     local StarterGui = game:GetService("StarterGui")
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -35,6 +20,17 @@ local function safeNotify(title, text, button)
             Button1 = tostring(button or "OK")
         })
     end)
+end
+
+-- helper: безопасно вызвать первый существующий конструктор из списка имён
+local function callFirst(section, names, ...)
+    for _, name in ipairs(names) do
+        local fn = section[name]
+        if typeof(fn) == "function" then
+            return fn(section, ...)
+        end
+    end
+    return nil
 end
 
 local function makeFacade(Interface)
@@ -54,29 +50,57 @@ local function makeFacade(Interface)
                 local Section = Tab:AddSection(sectionName or "Section", side or "Left")
                 local Channel = {}
 
-                -- Элементы
+                -- Button
                 function Channel:Button(label, optsOrCb)
                     local opts = type(optsOrCb) == "function" and { Callback = optsOrCb } or (optsOrCb or {})
-                    return Section:AddButton(label, opts)
+                    return callFirst(Section, {"AddButton","Button"}, label, opts)
                 end
+
+                -- Toggle
                 function Channel:Toggle(label, opts)
-                    return Section:AddToggle(label, opts or {})
+                    return callFirst(Section, {"AddToggle","Toggle"}, label, opts or {})
                 end
+
+                -- Slider (с форматированием числа через Suffix)
                 function Channel:Slider(label, opts)
-                    return Section:AddSlider(label, opts or {})
+                    local o = opts or {}
+                    o.Min = o.Min or 0
+                    o.Max = o.Max or 100
+                    o.Value = o.Value or o.Min
+                    o.Suffix = o.Suffix or ""
+                    return callFirst(Section, {"AddSlider","Slider"}, label, o)
                 end
+
+                -- List / Dropdown
                 function Channel:List(label, opts)
-                    return Section:AddList(label, opts or {})
+                    local o = opts or {}
+                    o.Values = o.Values or {"Item 1","Item 2"}
+                    o.Default = o.Default or o.Values[1]
+                    o.Multi = o.Multi or false
+                    return callFirst(Section, {"AddList","AddDropdown","Dropdown","List"}, label, o)
                 end
+
+                -- Bind / Keybind
                 function Channel:Bind(label, opts)
-                    return Section:AddBind(label, opts or {})
+                    local o = opts or {}
+                    o.Default = o.Default or Enum.KeyCode.RightControl
+                    return callFirst(Section, {"AddBind","AddKeybind","Keybind","Bind"}, label, o)
                 end
+
+                -- Color / Colorpicker
                 function Channel:Color(label, opts)
-                    return Section:AddColor(label, opts or {})
+                    local o = opts or {}
+                    o.Default = o.Default or Color3.fromRGB(255, 60, 60)
+                    return callFirst(Section, {"AddColor","AddColorpicker","Colorpicker","Color"}, label, o)
                 end
+
+                -- Separator (если нет — делаем пустую disabled кнопку)
                 function Channel:Seperator()
-                    -- Если в ядре есть реальный сепаратор — можно заменить на него.
-                    return Section:AddButton(" ", { Callback = function() end, Disabled = true })
+                    local sep = callFirst(Section, {"AddSeparator","Separator","Seperator"})
+                    if not sep then
+                        callFirst(Section, {"AddButton","Button"}, " ", {Disabled=true, Callback=function() end})
+                    end
+                    return sep
                 end
 
                 return Channel
@@ -85,26 +109,15 @@ local function makeFacade(Interface)
             return Server
         end
 
-        -- Рендер
         function Win:Init()
             Interface:Init(title or "Window", nil, extra)
         end
 
-        -- Хелперы
-        function Win:Flags()
-            return Interface.Flags
-        end
-        function Win:Toggle()
-            Interface:Toggle()
-        end
-        function Win:Unload()
-            Interface:Unload()
-        end
+        function Win:Flags() return Interface.Flags end
+        function Win:Toggle() Interface:Toggle() end
+        function Win:Unload() Interface:Unload() end
 
-        -- Уведомления через фасад
-        function Facade:Notification(t, msg, btn)
-            safeNotify(t, msg, btn)
-        end
+        function Facade:Notification(t, msg, btn) safeNotify(t, msg, btn) end
 
         return Win
     end
