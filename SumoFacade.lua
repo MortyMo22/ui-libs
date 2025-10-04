@@ -1,4 +1,4 @@
--- SumoFacade.lua (адаптивный фасад для SUMOHOOK.lua)
+-- SumoFacade.lua (финальный фасад для SUMOHOOK.lua)
 
 local CORE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/SUMOHOOK.lua"
 
@@ -53,22 +53,28 @@ local function makeFacade(Interface)
                 -- Button
                 function Channel:Button(label, optsOrCb)
                     local opts = type(optsOrCb) == "function" and { Callback = optsOrCb } or (optsOrCb or {})
-                    return callFirst(Section, {"AddButton","Button"}, label, opts)
+                    return callFirst(Section, {"AddButton","Button"}, tostring(label or "Button"), opts)
                 end
 
                 -- Toggle
                 function Channel:Toggle(label, opts)
-                    return callFirst(Section, {"AddToggle","Toggle"}, label, opts or {})
+                    local o = opts or {}
+                    o.Flag = tostring(o.Flag or label or "Toggle")
+                    o.Default = (o.Default == true)
+                    o.Callback = o.Callback or function() end
+                    return callFirst(Section, {"AddToggle","Toggle"}, tostring(label or "Toggle"), o)
                 end
 
-                -- Slider (с форматированием числа через Suffix)
+                -- Slider
                 function Channel:Slider(label, opts)
                     local o = opts or {}
-                    o.Min = o.Min or 0
-                    o.Max = o.Max or 100
-                    o.Value = o.Value or o.Min
-                    o.Suffix = o.Suffix or ""
-                    return callFirst(Section, {"AddSlider","Slider"}, label, o)
+                    o.Min = tonumber(o.Min) or 0
+                    o.Max = tonumber(o.Max) or 100
+                    o.Value = tonumber(o.Value) or o.Min
+                    o.Suffix = tostring(o.Suffix or "")
+                    o.Flag = tostring(o.Flag or label or "Slider")
+                    o.Callback = o.Callback or function() end
+                    return callFirst(Section, {"AddSlider","Slider"}, tostring(label or "Slider"), o)
                 end
 
                 -- List / Dropdown
@@ -76,25 +82,31 @@ local function makeFacade(Interface)
                     local o = opts or {}
                     o.Values = o.Values or {"Item 1","Item 2"}
                     o.Default = o.Default or o.Values[1]
-                    o.Multi = o.Multi or false
-                    return callFirst(Section, {"AddList","AddDropdown","Dropdown","List"}, label, o)
+                    o.Multi = (o.Multi == true)
+                    o.Flag = tostring(o.Flag or label or "List")
+                    o.Callback = o.Callback or function() end
+                    return callFirst(Section, {"AddList","AddDropdown","Dropdown","List"}, tostring(label or "List"), o)
                 end
 
                 -- Bind / Keybind
                 function Channel:Bind(label, opts)
                     local o = opts or {}
                     o.Default = o.Default or Enum.KeyCode.RightControl
-                    return callFirst(Section, {"AddBind","AddKeybind","Keybind","Bind"}, label, o)
+                    o.Flag = tostring(o.Flag or label or "Bind")
+                    o.Callback = o.Callback or function() end
+                    return callFirst(Section, {"AddBind","AddKeybind","Keybind","Bind"}, tostring(label or "Bind"), o)
                 end
 
                 -- Color / Colorpicker
                 function Channel:Color(label, opts)
                     local o = opts or {}
                     o.Default = o.Default or Color3.fromRGB(255, 60, 60)
-                    return callFirst(Section, {"AddColor","AddColorpicker","Colorpicker","Color"}, label, o)
+                    o.Flag = tostring(o.Flag or label or "Color")
+                    o.Callback = o.Callback or function() end
+                    return callFirst(Section, {"AddColor","AddColorpicker","Colorpicker","Color"}, tostring(label or "Color"), o)
                 end
 
-                -- Separator (если нет — делаем пустую disabled кнопку)
+                -- Separator
                 function Channel:Seperator()
                     local sep = callFirst(Section, {"AddSeparator","Separator","Seperator"})
                     if not sep then
