@@ -1,4 +1,4 @@
--- SumoFacade.lua (финальный фасад для SUMOHOOK.lua)
+-- SumoFacade.lua (адаптирован под реальные поля SUMOHOOK)
 
 local CORE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/SUMOHOOK.lua"
 
@@ -6,7 +6,6 @@ getgenv().SUMOHOOK_LIB_MODE = true
 local Interface = loadstring(game:HttpGet(CORE_URL))()
 assert(Interface, "SUMOHOOK core did not return Interface")
 
--- универсальный Notify
 local function safeNotify(title, text, button)
     if typeof(Interface.Notification) == "function" then
         Interface:Notification(title, text, button); return
@@ -22,7 +21,6 @@ local function safeNotify(title, text, button)
     end)
 end
 
--- helper: безопасно вызвать первый существующий конструктор из списка имён
 local function callFirst(section, names, ...)
     for _, name in ipairs(names) do
         local fn = section[name]
@@ -30,7 +28,6 @@ local function callFirst(section, names, ...)
             return fn(section, ...)
         end
     end
-    return nil
 end
 
 local function makeFacade(Interface)
@@ -56,54 +53,60 @@ local function makeFacade(Interface)
                     return callFirst(Section, {"AddButton","Button"}, tostring(label or "Button"), opts)
                 end
 
-                -- Toggle
+                -- Toggle (SUMOHOOK: State, Flag, Callback)
                 function Channel:Toggle(label, opts)
                     local o = opts or {}
                     o.Flag = tostring(o.Flag or label or "Toggle")
-                    o.Default = (o.Default == true)
+                    o.State = (o.State ~= nil) and (o.State == true) or (o.Default == true) or false
                     o.Callback = o.Callback or function() end
                     return callFirst(Section, {"AddToggle","Toggle"}, tostring(label or "Toggle"), o)
                 end
 
-                -- Slider
+                -- Slider (SUMOHOOK: Min, Max, Value, Suffix, Flag)
                 function Channel:Slider(label, opts)
                     local o = opts or {}
                     o.Min = tonumber(o.Min) or 0
                     o.Max = tonumber(o.Max) or 100
-                    o.Value = tonumber(o.Value) or o.Min
+                    local defaultVal = tonumber(o.Value)
+                    if defaultVal == nil then defaultVal = o.Min end
+                    o.Value = defaultVal
                     o.Suffix = tostring(o.Suffix or "")
                     o.Flag = tostring(o.Flag or label or "Slider")
                     o.Callback = o.Callback or function() end
                     return callFirst(Section, {"AddSlider","Slider"}, tostring(label or "Slider"), o)
                 end
 
-                -- List / Dropdown
+                -- List / Dropdown (SUMOHOOK: Values, Value, Multi, Flag)
                 function Channel:List(label, opts)
                     local o = opts or {}
-                    o.Values = o.Values or {"Item 1","Item 2"}
-                    o.Default = o.Default or o.Values[1]
-                    o.Multi = (o.Multi == true)
+                    o.Values = (type(o.Values) == "table" and #o.Values > 0) and o.Values or {"Item 1","Item 2"}
+                    if o.Value == nil then
+                        -- map с Default → Value, иначе первый элемент
+                        o.Value = (o.Default ~= nil) and o.Default or o.Values[1]
+                    end
+                    o.Multi = (o.Multi == true) or (typeof(o.Value) == "table")
                     o.Flag = tostring(o.Flag or label or "List")
                     o.Callback = o.Callback or function() end
-                    return callFirst(Section, {"AddList","AddDropdown","Dropdown","List"}, tostring(label or "List"), o)
+                    return callFirst(Section, {"AddList","List","AddDropdown","Dropdown"}, tostring(label or "List"), o)
                 end
 
-                -- Bind / Keybind
+                -- Bind / Keybind (SUMOHOOK: Key, Flag)
                 function Channel:Bind(label, opts)
                     local o = opts or {}
-                    o.Default = o.Default or Enum.KeyCode.RightControl
+                    local def = o.Default or o.Key or Enum.KeyCode.RightControl
+                    o.Key = (typeof(def) == "EnumItem") and def or Enum.KeyCode.RightControl
                     o.Flag = tostring(o.Flag or label or "Bind")
                     o.Callback = o.Callback or function() end
-                    return callFirst(Section, {"AddBind","AddKeybind","Keybind","Bind"}, tostring(label or "Bind"), o)
+                    return callFirst(Section, {"AddBind","Bind","AddKeybind","Keybind"}, tostring(label or "Bind"), o)
                 end
 
-                -- Color / Colorpicker
+                -- Color / Colorpicker (SUMOHOOK: Color, Alpha, Flag)
                 function Channel:Color(label, opts)
                     local o = opts or {}
-                    o.Default = o.Default or Color3.fromRGB(255, 60, 60)
+                    o.Color = o.Color or o.Default or Color3.fromRGB(255, 60, 60)
                     o.Flag = tostring(o.Flag or label or "Color")
                     o.Callback = o.Callback or function() end
-                    return callFirst(Section, {"AddColor","AddColorpicker","Colorpicker","Color"}, tostring(label or "Color"), o)
+                    return callFirst(Section, {"AddColor","Color","AddColorpicker","Colorpicker"}, tostring(label or "Color"), o)
                 end
 
                 -- Separator
