@@ -1,0 +1,1050 @@
+--!strict
+-- RoundedUI: cross-platform UI library with rounded corners and rich controls
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+
+local function create(instance, props, children)
+    local obj = Instance.new(instance)
+    for k, v in pairs(props or {}) do
+        obj[k] = v
+    end
+    for _, child in ipairs(children or {}) do
+        child.Parent = obj
+    end
+    return obj
+end
+
+local function addCorner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = parent
+    return c
+end
+
+local function addStroke(parent, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color or Color3.fromRGB(60, 60, 60)
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0.4
+    s.Parent = parent
+    return s
+end
+
+local function addPadding(parent, pad)
+    local p = Instance.new("UIPadding")
+    p.PaddingTop = UDim.new(0, pad)
+    p.PaddingBottom = UDim.new(0, pad)
+    p.PaddingLeft = UDim.new(0, pad)
+    p.PaddingRight = UDim.new(0, pad)
+    p.Parent = parent
+    return p
+end
+
+local function withHover(btn, base, hover)
+    btn.MouseEnter:Connect(function()
+        btn.BackgroundColor3 = hover
+    end)
+    btn.MouseLeave:Connect(function()
+        btn.BackgroundColor3 = base
+    end)
+end
+
+local function isMobile()
+    return UIS.TouchEnabled and not UIS.KeyboardEnabled
+end
+
+local Theme = {
+    bg = Color3.fromRGB(20, 20, 24),
+    panel = Color3.fromRGB(28, 28, 34),
+    panel2 = Color3.fromRGB(32, 32, 40),
+    stroke = Color3.fromRGB(60, 60, 70),
+    accent = Color3.fromRGB(140, 90, 255), -- softer purple accent
+    accentDim = Color3.fromRGB(110, 70, 210),
+    text = Color3.fromRGB(230, 230, 240),
+    textDim = Color3.fromRGB(180, 180, 190),
+    good = Color3.fromRGB(90, 200, 120),
+    warn = Color3.fromRGB(230, 80, 80),
+    control = Color3.fromRGB(45, 45, 55),
+    hover = Color3.fromRGB(55, 55, 70),
+}
+
+local FONT = Enum.Font.Gotham
+local FONT_B = Enum.Font.GothamBold
+
+local RoundedUI = {}
+
+-- Internal: Color picker popup
+local function createColorPickerPopup(rootGui, startColor, onApply)
+    local overlay = create("Frame", {
+        Name = "Overlay",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = Color3.fromRGB(0,0,0),
+        BackgroundTransparency = 0.35,
+        ZIndex = 50,
+    }, {})
+    overlay.Parent = rootGui
+
+    local popup = create("Frame", {
+        Size = UDim2.new(0.34, 0, 0.5, 0),
+        Position = UDim2.new(0.33, 0, 0.25, 0),
+        BackgroundColor3 = Theme.panel,
+        ZIndex = 51,
+    }, {})
+    popup.Parent = overlay
+    addCorner(popup, 10)
+    addStroke(popup, Theme.stroke, 1, 0.5)
+    addPadding(popup, 12)
+
+    local title = create("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 28),
+        BackgroundTransparency = 1,
+        Text = "Color Picker",
+        TextColor3 = Theme.text,
+        Font = FONT_B,
+        TextSize = 18,
+        ZIndex = 51,
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, {})
+    title.Parent = popup
+
+    local preview = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundColor3 = startColor or Theme.accent,
+        ZIndex = 51,
+    }, {})
+    preview.Parent = popup
+    addCorner(preview, 8)
+    addStroke(preview, Theme.stroke, 1, 0.5)
+
+    -- Simple HSV sliders (Hue, Saturation, Value)
+    local sliders = {}
+    local function addSlider(labelText, min, max, default, onChange)
+        local container = create("Frame", {
+            Size = UDim2.new(1, 0, 0, 50),
+            BackgroundTransparency = 1,
+            ZIndex = 51,
+        }, {})
+        container.Parent = popup
+
+        local lbl = create("TextLabel", {
+            Size = UDim2.new(1, 0, 0, 20),
+            BackgroundTransparency = 1,
+            Text = labelText,
+            TextColor3 = Theme.textDim,
+            Font = FONT,
+            TextSize = 14,
+            ZIndex = 51,
+            TextXAlignment = Enum.TextXAlignment.Left,
+        }, {})
+        lbl.Parent = container
+
+        local bar = create("Frame", {
+            Size = UDim2.new(1, 0, 0, 18),
+            Position = UDim2.new(0, 0, 0, 24),
+            BackgroundColor3 = Theme.control,
+            ZIndex = 51,
+        }, {})
+        bar.Parent = container
+        addCorner(bar, 8)
+
+        local fill = create("Frame", {
+            Size = UDim2.new(default / max, 0, 1, 0),
+            BackgroundColor3 = Theme.accent,
+            ZIndex = 52,
+        }, {})
+        fill.Parent = bar
+        addCorner(fill, 8)
+
+        local value = default
+        bar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                local conn
+                conn = UIS.InputChanged:Connect(function(ch)
+                    if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
+                        local rel = math.clamp((ch.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+                        value = min + (max - min) * rel
+                        fill.Size = UDim2.new(rel, 0, 1, 0)
+                        onChange(value)
+                    end
+                end)
+                UIS.InputEnded:Connect(function(endInput)
+                    if endInput.UserInputType == input.UserInputType then
+                        if conn then conn:Disconnect() end
+                    end
+                end)
+            end
+        end)
+        table.insert(sliders, {bar=bar, set=function(v)
+            local rel = math.clamp((v - min) / (max - min), 0, 1)
+            fill.Size = UDim2.new(rel, 0, 1, 0)
+        end})
+        return sliders[#sliders]
+    end
+
+    -- HSV backing values
+    local H, S, V = 0, 1, 1
+    local function updatePreviewFromHSV()
+        -- Convert HSV to Color3
+        local color = Color3.fromHSV(H, S, V)
+        preview.BackgroundColor3 = color
+    end
+
+    addSlider("Hue", 0, 1, H, function(v) H = v; updatePreviewFromHSV() end)
+    addSlider("Saturation", 0, 1, S, function(v) S = v; updatePreviewFromHSV() end)
+    addSlider("Value", 0, 1, V, function(v) V = v; updatePreviewFromHSV() end)
+
+    -- RGB Inputs + Hex
+    local inputRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 36),
+        BackgroundTransparency = 1,
+        ZIndex = 51,
+    }, {})
+    inputRow.Parent = popup
+
+    local function makeBox(placeholder)
+        local box = create("TextBox", {
+            Size = UDim2.new(0.24, 0, 1, 0),
+            BackgroundColor3 = Theme.panel2,
+            TextColor3 = Theme.text,
+            Font = FONT,
+            TextSize = 14,
+            PlaceholderText = placeholder,
+            ClearTextOnFocus = false,
+            ZIndex = 51,
+        }, {})
+        addCorner(box, 8)
+        addStroke(box, Theme.stroke, 1, 0.6)
+        return box
+    end
+
+    local rBox = makeBox("R")
+    local gBox = makeBox("G")
+    local bBox = makeBox("B")
+    local hexBox = makeBox("#HEX")
+
+    rBox.Parent = inputRow
+    gBox.Parent = inputRow
+    bBox.Parent = inputRow
+    hexBox.Parent = inputRow
+
+    gBox.Position = UDim2.new(0.26, 0, 0, 0)
+    bBox.Position = UDim2.new(0.52, 0, 0, 0)
+    hexBox.Position = UDim2.new(0.78, 0, 0, 0)
+
+    local function syncFromPreview()
+        local c = preview.BackgroundColor3
+        local r = math.floor(c.R * 255)
+        local g = math.floor(c.G * 255)
+        local b = math.floor(c.B * 255)
+        rBox.Text = tostring(r)
+        gBox.Text = tostring(g)
+        bBox.Text = tostring(b)
+        local hex = string.format("#%02X%02X%02X", r, g, b)
+        hexBox.Text = hex
+    end
+    updatePreviewFromHSV()
+    syncFromPreview()
+
+    local function setFromRGB()
+        local r = tonumber(rBox.Text) or 0
+        local g = tonumber(gBox.Text) or 0
+        local b = tonumber(bBox.Text) or 0
+        r = math.clamp(r, 0, 255)
+        g = math.clamp(g, 0, 255)
+        b = math.clamp(b, 0, 255)
+        preview.BackgroundColor3 = Color3.fromRGB(r, g, b)
+        H, S, V = preview.BackgroundColor3:ToHSV()
+        for _, s in ipairs(sliders) do s.set and s.set((s.bar == s.bar) and 0 or 0) end
+        syncFromPreview()
+    end
+
+    local function setFromHex()
+        local text = hexBox.Text:gsub("#","")
+        if #text == 6 then
+            local r = tonumber(text:sub(1,2), 16) or 0
+            local g = tonumber(text:sub(3,4), 16) or 0
+            local b = tonumber(text:sub(5,6), 16) or 0
+            preview.BackgroundColor3 = Color3.fromRGB(r, g, b)
+            H, S, V = preview.BackgroundColor3:ToHSV()
+            syncFromPreview()
+        end
+    end
+
+    rBox.FocusLost:Connect(setFromRGB)
+    gBox.FocusLost:Connect(setFromRGB)
+    bBox.FocusLost:Connect(setFromRGB)
+    hexBox.FocusLost:Connect(setFromHex)
+
+    local buttonsRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundTransparency = 1,
+        ZIndex = 51,
+    }, {})
+    buttonsRow.Parent = popup
+
+    local applyBtn = create("TextButton", {
+        Size = UDim2.new(0.48, 0, 1, 0),
+        BackgroundColor3 = Theme.accent,
+        Text = "Apply",
+        TextColor3 = Theme.text,
+        Font = FONT_B,
+        TextSize = 16,
+        ZIndex = 52,
+    }, {})
+    addCorner(applyBtn, 8)
+    withHover(applyBtn, Theme.accent, Theme.accentDim)
+    applyBtn.Parent = buttonsRow
+
+    local cancelBtn = create("TextButton", {
+        Size = UDim2.new(0.48, 0, 1, 0),
+        Position = UDim2.new(0.52, 0, 0, 0),
+        BackgroundColor3 = Theme.control,
+        Text = "Cancel",
+        TextColor3 = Theme.text,
+        Font = FONT_B,
+        TextSize = 16,
+        ZIndex = 52,
+    }, {})
+    addCorner(cancelBtn, 8)
+    withHover(cancelBtn, Theme.control, Theme.hover)
+    cancelBtn.Parent = buttonsRow
+
+    applyBtn.MouseButton1Click:Connect(function()
+        if onApply then onApply(preview.BackgroundColor3) end
+        overlay:Destroy()
+    end)
+    cancelBtn.MouseButton1Click:Connect(function()
+        overlay:Destroy()
+    end)
+
+    overlay.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            -- clicking outside closes
+            overlay:Destroy()
+        end
+    end)
+end
+
+-- API: Window -> Tabs -> UnderSections -> Controls
+function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
+    local gui = create("ScreenGui", {
+        Name = "RoundedUI",
+        ResetOnSpawn = false,
+        IgnoreGuiInset = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    }, {})
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+    local window = create("Frame", {
+        Name = "Window",
+        Size = UDim2.new(isMobile() and 0.95 or 0.6, 0, isMobile() and 0.8 or 0.7, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Theme.bg,
+    }, {})
+    window.Parent = gui
+    addCorner(window, 12)
+    addStroke(window, Theme.stroke, 1, 0.6)
+    addPadding(window, 10)
+
+    -- Header
+    local header = create("Frame", {
+        Name = "Header",
+        Size = UDim2.new(1, 0, 0, 32),
+        BackgroundColor3 = Theme.panel,
+    }, {})
+    header.Parent = window
+    addCorner(header, 10)
+    addStroke(header, Theme.stroke, 1, 0.6)
+
+    local leftTitle = create("TextLabel", {
+        Size = UDim2.new(0.5, -8, 1, 0),
+        Position = UDim2.new(0, 8, 0, 0),
+        BackgroundTransparency = 1,
+        Text = nameLeft or "UI",
+        TextColor3 = Theme.text,
+        Font = FONT_B,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, {})
+    leftTitle.Parent = header
+
+    local rightTitle = create("TextLabel", {
+        Size = UDim2.new(0.5, -8, 1, 0),
+        Position = UDim2.new(0.5, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = nameRight or "",
+        TextColor3 = Theme.textDim,
+        Font = FONT,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, {})
+    rightTitle.Parent = header
+
+    -- Tabs strip
+    local tabsStrip = create("ScrollingFrame", {
+        Name = "Tabs",
+        Size = UDim2.new(1, 0, 0, 36),
+        Position = UDim2.new(0, 0, 0, 40),
+        BackgroundColor3 = Theme.panel2,
+        ScrollBarThickness = 4,
+        ScrollingDirection = Enum.ScrollingDirection.X,
+        CanvasSize = UDim2.new(0, 0, 0, 0),
+    }, {})
+    tabsStrip.Parent = window
+    addCorner(tabsStrip, 10)
+    addStroke(tabsStrip, Theme.stroke, 1, 0.5)
+    addPadding(tabsStrip, 6)
+
+    local tabsLayout = Instance.new("UIListLayout")
+    tabsLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabsLayout.Padding = UDim.new(0, 6)
+    tabsLayout.Parent = tabsStrip
+
+    -- Content area
+    local content = create("Frame", {
+        Name = "Content",
+        Size = UDim2.new(1, 0, 1, -80),
+        Position = UDim2.new(0, 0, 0, 80),
+        BackgroundColor3 = Theme.bg,
+    }, {})
+    content.Parent = window
+    addPadding(content, 6)
+
+    local api = {}
+
+    local tabs = {}
+
+    local function recalcTabsCanvas()
+        local total = 0
+        for _, child in ipairs(tabsStrip:GetChildren()) do
+            if child:IsA("GuiObject") then
+                total = total + child.AbsoluteSize.X + 6
+            end
+        end
+        tabsStrip.CanvasSize = UDim2.new(0, total, 0, 0)
+    end
+
+    function api:AddSection(tabName: string)
+        -- Tab button
+        local btn = create("TextButton", {
+            Size = UDim2.new(0, 120, 1, -12),
+            BackgroundColor3 = Theme.control,
+            Text = tabName,
+            TextColor3 = Theme.text,
+            Font = FONT_B,
+            TextSize = 14,
+        }, {})
+        addCorner(btn, 8)
+        withHover(btn, Theme.control, Theme.hover)
+        btn.Parent = tabsStrip
+
+        -- Tab page
+        local page = create("Frame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            Visible = (#tabs == 0),
+        }, {})
+        page.Parent = content
+
+        tabs[tabName] = {button=btn, page=page}
+
+        -- Switch tab on click
+        btn.MouseButton1Click:Connect(function()
+            for name, data in pairs(tabs) do
+                data.page.Visible = (name == tabName)
+                data.button.BackgroundColor3 = (name == tabName) and Theme.accent or Theme.control
+            end
+            leftTitle.Text = tabName
+        end)
+
+        -- UnderSections container (two columns)
+        local container = create("Frame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+        }, {})
+        container.Parent = page
+
+        local columns = create("Frame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+        }, {})
+        columns.Parent = container
+
+        local leftCol = create("ScrollingFrame", {
+            Size = UDim2.new(0.5, -6, 1, 0),
+            BackgroundTransparency = 1,
+            ScrollBarThickness = 6,
+        }, {})
+        leftCol.Parent = columns
+
+        local rightCol = create("ScrollingFrame", {
+            Size = UDim2.new(0.5, -6, 1, 0),
+            Position = UDim2.new(0.5, 6, 0, 0),
+            BackgroundTransparency = 1,
+            ScrollBarThickness = 6,
+        }, {})
+        rightCol.Parent = columns
+
+        local function makeSection(parentCol, sectionName)
+            local sec = create("Frame", {
+                Size = UDim2.new(1, -6, 0, 40),
+                BackgroundColor3 = Theme.panel,
+            }, {})
+            sec.Parent = parentCol
+            addCorner(sec, 10)
+            addStroke(sec, Theme.stroke, 1, 0.6)
+            addPadding(sec, 8)
+
+            local title = create("TextLabel", {
+                Size = UDim2.new(1, 0, 0, 20),
+                BackgroundTransparency = 1,
+                Text = sectionName or "",
+                TextColor3 = Theme.text,
+                Font = FONT_B,
+                TextSize = 15,
+                TextXAlignment = Enum.TextXAlignment.Left,
+            }, {})
+            title.Parent = sec
+
+            local stack = create("Frame", {
+                Size = UDim2.new(1, 0, 0, 0),
+                Position = UDim2.new(0, 0, 0, 24),
+                BackgroundTransparency = 1,
+            }, {})
+            stack.Parent = sec
+
+            local list = Instance.new("UIListLayout")
+            list.Padding = UDim.new(0, 6)
+            list.FillDirection = Enum.FillDirection.Vertical
+            list.SortOrder = Enum.SortOrder.LayoutOrder
+            list.Parent = stack
+
+            local function resize()
+                sec.Size = UDim2.new(1, -6, 0, 24 + stack.AbsoluteSize.Y + 12)
+                parentCol.CanvasSize = UDim2.new(0, 0, 0, parentCol.AbsoluteCanvasSize.Y + sec.AbsoluteSize.Y + 12)
+            end
+            stack.Changed:Connect(resize)
+            RunService.RenderStepped:Connect(resize)
+
+            local sectionAPI = {}
+
+            function sectionAPI:Label(text)
+                local lbl = create("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 20),
+                    BackgroundTransparency = 1,
+                    Text = text,
+                    TextColor3 = Theme.textDim,
+                    Font = FONT,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, {})
+                lbl.Parent = stack
+                return lbl
+            end
+
+            function sectionAPI:Separator()
+                local sep = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 1),
+                    BackgroundColor3 = Theme.stroke,
+                }, {})
+                sep.Parent = stack
+                return sep
+            end
+
+            function sectionAPI:Button(text, callback)
+                local btn = create("TextButton", {
+                    Size = UDim2.new(1, 0, 0, 34),
+                    BackgroundColor3 = Theme.control,
+                    Text = text,
+                    TextColor3 = Theme.text,
+                    Font = FONT_B,
+                    TextSize = 14,
+                }, {})
+                addCorner(btn, 8)
+                withHover(btn, Theme.control, Theme.hover)
+                btn.Parent = stack
+                btn.MouseButton1Click:Connect(function()
+                    if callback then callback() end
+                end)
+                return btn
+            end
+
+            function sectionAPI:Toggle(text, opts)
+                local state = (opts and opts.Default) or false
+                local row = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 34),
+                    BackgroundTransparency = 1,
+                }, {})
+                row.Parent = stack
+
+                local box = create("TextButton", {
+                    Size = UDim2.new(0, 28, 0, 28),
+                    BackgroundColor3 = state and Theme.accent or Theme.control,
+                    Text = "",
+                    TextColor3 = Theme.text,
+                    Font = FONT_B,
+                    TextSize = 14,
+                    Position = UDim2.new(0, 0, 0, 3),
+                }, {})
+                addCorner(box, 6)
+                addStroke(box, Theme.stroke, 1, 0.5)
+                box.Parent = row
+
+                local lbl = create("TextLabel", {
+                    Size = UDim2.new(1, -36, 1, 0),
+                    Position = UDim2.new(0, 36, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text = text,
+                    TextColor3 = Theme.text,
+                    Font = FONT,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, {})
+                lbl.Parent = row
+
+                local function set(val)
+                    state = val
+                    box.BackgroundColor3 = state and Theme.accent or Theme.control
+                    if opts and opts.Callback then opts.Callback(state) end
+                end
+
+                box.MouseButton1Click:Connect(function()
+                    set(not state)
+                end)
+                return {
+                    Set = set,
+                    Get = function() return state end
+                }
+            end
+
+            function sectionAPI:ToggleBind(text, opts)
+                local bindKey: Enum.KeyCode? = (opts and opts.Bind) or Enum.KeyCode.R
+                local toggle = sectionAPI:Toggle(text, {Default = (opts and opts.Default) or false, Callback = (opts and opts.Callback)})
+                local hint = sectionAPI:Label(("Bind: %s"):format(tostring(bindKey)))
+                hint.TextColor3 = Theme.textDim
+
+                UIS.InputBegan:Connect(function(input, gp)
+                    if gp then return end
+                    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then
+                        toggle.Set(not toggle.Get())
+                    end
+                end)
+
+                return {
+                    Set = toggle.Set,
+                    Get = toggle.Get,
+                    SetBind = function(newKey)
+                        bindKey = newKey
+                        hint.Text = ("Bind: %s"):format(tostring(bindKey))
+                    end
+                }
+            end
+
+            function sectionAPI:Slider(text, cfg, callback)
+                local min = cfg.min or 0
+                local max = cfg.max or 100
+                local value = cfg.default or min
+                local suffix = cfg.suffix or ""
+                local showPercent = cfg.showPercent or false
+
+                local container = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 56),
+                    BackgroundTransparency = 1,
+                }, {})
+                container.Parent = stack
+
+                local top = create("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 20),
+                    BackgroundTransparency = 1,
+                    Text = ("%s: %s%s"):format(text, tostring(value), suffix),
+                    TextColor3 = Theme.text,
+                    Font = FONT,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, {})
+                top.Parent = container
+
+                local bar = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 18),
+                    Position = UDim2.new(0, 0, 0, 26),
+                    BackgroundColor3 = Theme.control,
+                }, {})
+                addCorner(bar, 8)
+                bar.Parent = container
+
+                local fill = create("Frame", {
+                    Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
+                    BackgroundColor3 = Theme.accent,
+                }, {})
+                addCorner(fill, 8)
+                fill.Parent = bar
+
+                local resetBtn = create("TextButton", {
+                    Size = UDim2.new(0, 64, 0, 20),
+                    Position = UDim2.new(1, -68, 0, 24),
+                    BackgroundColor3 = Theme.control,
+                    Text = "Reset",
+                    TextColor3 = Theme.text,
+                    Font = FONT_B,
+                    TextSize = 12,
+                }, {})
+                addCorner(resetBtn, 6)
+                withHover(resetBtn, Theme.control, Theme.hover)
+                resetBtn.Parent = container
+
+                local function set(v)
+                    value = math.clamp(v, min, max)
+                    local rel = (value - min) / (max - min)
+                    fill.Size = UDim2.new(rel, 0, 1, 0)
+                    local display = showPercent and string.format("%d%%", math.floor(rel * 100 + 0.5)) or tostring(value)
+                    top.Text = ("%s: %s%s"):format(text, display, suffix)
+                    if callback then callback(value) end
+                end
+
+                bar.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                        local conn
+                        conn = UIS.InputChanged:Connect(function(ch)
+                            if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
+                                local rel = math.clamp((ch.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+                                set(min + (max - min) * rel)
+                            end
+                        end)
+                        UIS.InputEnded:Connect(function(endInput)
+                            if endInput.UserInputType == input.UserInputType then
+                                if conn then conn:Disconnect() end
+                            end
+                        end)
+                    end
+                end)
+
+                resetBtn.MouseButton1Click:Connect(function()
+                    set(cfg.default or min)
+                end)
+
+                return {
+                    Set = set,
+                    Get = function() return value end
+                }
+            end
+
+            function sectionAPI:List(text, options, callback)
+                local container = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 34 + (#options * 30)),
+                    BackgroundTransparency = 1,
+                }, {})
+                container.Parent = stack
+
+                local lbl = create("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 20),
+                    BackgroundTransparency = 1,
+                    Text = text,
+                    TextColor3 = Theme.text,
+                    Font = FONT,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, {})
+                lbl.Parent = container
+
+                local holder = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, (#options * 28)),
+                    Position = UDim2.new(0, 0, 0, 24),
+                    BackgroundTransparency = 1,
+                }, {})
+                holder.Parent = container
+
+                local layout = Instance.new("UIListLayout")
+                layout.Padding = UDim.new(0, 6)
+                layout.Parent = holder
+
+                local selected = {}
+
+                local function toggleItem(name)
+                    selected[name] = not selected[name]
+                    if callback then callback(selected) end
+                end
+
+                for _, name in ipairs(options) do
+                    local btn = create("TextButton", {
+                        Size = UDim2.new(1, 0, 0, 24),
+                        BackgroundColor3 = Theme.control,
+                        Text = name,
+                        TextColor3 = Theme.text,
+                        Font = FONT,
+                        TextSize = 14,
+                    }, {})
+                    addCorner(btn, 6)
+                    addStroke(btn, Theme.stroke, 1, 0.5)
+                    btn.Parent = holder
+
+                    btn.MouseButton1Click:Connect(function()
+                        toggleItem(name)
+                        btn.BackgroundColor3 = selected[name] and Theme.accent or Theme.control
+                    end)
+                end
+
+                return {
+                    Get = function() return selected end,
+                    Set = function(tbl)
+                        selected = tbl or {}
+                        for _, child in ipairs(holder:GetChildren()) do
+                            if child:IsA("TextButton") then
+                                local label = child.Text
+                                child.BackgroundColor3 = (selected[label] and Theme.accent or Theme.control)
+                            end
+                        end
+                        if callback then callback(selected) end
+                    end
+                }
+            end
+
+            function sectionAPI:DropDown(text, options, default, callback)
+                local container = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 56),
+                    BackgroundTransparency = 1,
+                }, {})
+                container.Parent = stack
+
+                local lbl = create("TextLabel", {
+                    Size = UDim2.new(1, 0, 0, 20),
+                    BackgroundTransparency = 1,
+                    Text = text,
+                    TextColor3 = Theme.text,
+                    Font = FONT,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, {})
+                lbl.Parent = container
+
+                local current = default or options[1]
+                local btn = create("TextButton", {
+                    Size = UDim2.new(1, 0, 0, 28),
+                    Position = UDim2.new(0, 0, 0, 24),
+                    BackgroundColor3 = Theme.control,
+                    Text = tostring(current),
+                    TextColor3 = Theme.text,
+                    Font = FONT,
+                    TextSize = 14,
+                }, {})
+                addCorner(btn, 8)
+                addStroke(btn, Theme.stroke, 1, 0.5)
+                btn.Parent = container
+
+                btn.MouseButton1Click:Connect(function()
+                    -- Simple cycle dropdown
+                    local idx = table.find(options, current) or 1
+                    idx = (idx % #options) + 1
+                    current = options[idx]
+                    btn.Text = tostring(current)
+                    if callback then callback(current) end
+                end)
+
+                return {
+                    Get = function() return current end,
+                    Set = function(val)
+                        if table.find(options, val) then
+                            current = val
+                            btn.Text = tostring(current)
+                            if callback then callback(current) end
+                        end
+                    end
+                }
+            end
+
+            function sectionAPI:TextBox(placeholder, callback)
+                local box = create("TextBox", {
+                    Size = UDim2.new(1, 0, 0, 34),
+                    BackgroundColor3 = Theme.control,
+                    TextColor3 = Theme.text,
+                    Font = FONT,
+                    TextSize = 14,
+                    PlaceholderText = placeholder or "",
+                    ClearTextOnFocus = false,
+                }, {})
+                addCorner(box, 8)
+                addStroke(box, Theme.stroke, 1, 0.5)
+                box.Parent = stack
+
+                box.FocusLost:Connect(function(enterPressed)
+                    if callback then callback(box.Text, enterPressed) end
+                end)
+
+                return box
+            end
+
+            function sectionAPI:TextBind(labelText, initKey, callback)
+                local row = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 34),
+                    BackgroundTransparency = 1,
+                }, {})
+                row.Parent = stack
+
+                local lbl = create("TextLabel", {
+                    Size = UDim2.new(0.7, 0, 1, 0),
+                    BackgroundTransparency = 1,
+                    Text = labelText,
+                    TextColor3 = Theme.text,
+                    Font = FONT,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                }, {})
+                lbl.Parent = row
+
+                local keyLbl = create("TextLabel", {
+                    Size = UDim2.new(0.3, -6, 1, 0),
+                    Position = UDim2.new(0.7, 6, 0, 0),
+                    BackgroundColor3 = Theme.control,
+                    TextColor3 = Theme.text,
+                    Font = FONT_B,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Center,
+                    Text = tostring(initKey or Enum.KeyCode.RightShift),
+                }, {})
+                addCorner(keyLbl, 8)
+                addStroke(keyLbl, Theme.stroke, 1, 0.5)
+                keyLbl.Parent = row
+
+                local bindKey: Enum.KeyCode = initKey or Enum.KeyCode.RightShift
+
+                UIS.InputBegan:Connect(function(input, gp)
+                    if gp then return end
+                    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then
+                        if callback then callback() end
+                    end
+                end)
+
+                return {
+                    SetBind = function(newKey)
+                        bindKey = newKey
+                        keyLbl.Text = tostring(bindKey)
+                    end
+                }
+            end
+
+            function sectionAPI:ToggleColor(text, defaultState, defaultColor, callback)
+                local toggle = sectionAPI:Toggle(text, {Default = defaultState, Callback = function(s)
+                    if callback then callback(s, colorBtn.BackgroundColor3) end
+                end})
+
+                local colorBtn = create("TextButton", {
+                    Size = UDim2.new(0, 28, 0, 28),
+                    BackgroundColor3 = defaultColor or Theme.accent,
+                    Text = "",
+                    TextColor3 = Theme.text,
+                    Font = FONT_B,
+                    TextSize = 14,
+                    Position = UDim2.new(1, -32, 0, 3),
+                }, {})
+                addCorner(colorBtn, 6)
+                addStroke(colorBtn, Theme.stroke, 1, 0.5)
+                colorBtn.Parent = toggle -- attach to same row parent? For simplicity, place below:
+                colorBtn.Parent = stack
+
+                colorBtn.MouseButton1Click:Connect(function()
+                    createColorPickerPopup(sec.Parent.Parent.Parent, colorBtn.BackgroundColor3, function(newColor)
+                        colorBtn.BackgroundColor3 = newColor
+                        if callback then callback(toggle.Get(), newColor) end
+                    end)
+                end)
+
+                return {
+                    Set = function(state, color)
+                        toggle.Set(state)
+                        if color then colorBtn.BackgroundColor3 = color end
+                        if callback then callback(state, colorBtn.BackgroundColor3) end
+                    end,
+                    Get = function() return toggle.Get(), colorBtn.BackgroundColor3 end
+                }
+            end
+
+            function sectionAPI:ToggleDualColor(text, defaultState, c1, c2, callback)
+                local toggle = sectionAPI:Toggle(text, {Default = defaultState, Callback = function(s)
+                    if callback then callback(s, btn1.BackgroundColor3, btn2.BackgroundColor3) end
+                end})
+
+                local row = create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 34),
+                    BackgroundTransparency = 1,
+                }, {})
+                row.Parent = stack
+
+                local btn1 = create("TextButton", {
+                    Size = UDim2.new(0, 28, 0, 28),
+                    BackgroundColor3 = c1 or Theme.accent,
+                    Text = "",
+                    Position = UDim2.new(1, -64, 0, 3),
+                }, {})
+                addCorner(btn1, 6)
+                addStroke(btn1, Theme.stroke, 1, 0.5)
+                btn1.Parent = row
+
+                local btn2 = create("TextButton", {
+                    Size = UDim2.new(0, 28, 0, 28),
+                    BackgroundColor3 = c2 or Theme.good,
+                    Text = "",
+                    Position = UDim2.new(1, -32, 0, 3),
+                }, {})
+                addCorner(btn2, 6)
+                addStroke(btn2, Theme.stroke, 1, 0.5)
+                btn2.Parent = row
+
+                btn1.MouseButton1Click:Connect(function()
+                    createColorPickerPopup(sec.Parent.Parent.Parent, btn1.BackgroundColor3, function(newColor)
+                        btn1.BackgroundColor3 = newColor
+                        if callback then callback(toggle.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3) end
+                    end)
+                end)
+                btn2.MouseButton1Click:Connect(function()
+                    createColorPickerPopup(sec.Parent.Parent.Parent, btn2.BackgroundColor3, function(newColor)
+                        btn2.BackgroundColor3 = newColor
+                        if callback then callback(toggle.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3) end
+                    end)
+                end)
+
+                return {
+                    Set = function(state, nc1, nc2)
+                        toggle.Set(state)
+                        if nc1 then btn1.BackgroundColor3 = nc1 end
+                        if nc2 then btn2.BackgroundColor3 = nc2 end
+                        if callback then callback(state, btn1.BackgroundColor3, btn2.BackgroundColor3) end
+                    end,
+                    Get = function() return toggle.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3 end
+                }
+            end
+
+            return {
+                Raw = sec,
+                API = sectionAPI,
+            }
+        end
+
+        local pageAPI = {}
+
+        function pageAPI:AddUnderSections(leftName: string, rightName: string)
+            local leftSec = makeSection(leftCol, leftName)
+            local rightSec = makeSection(rightCol, rightName)
+            return leftSec.API, rightSec.API
+        end
+
+        function pageAPI:SetNameOfMainSection(newName: string)
+            -- Tab title is leftTitle when active
+            tabs[tabName].button.Text = newName
+        end
+
+        return pageAPI
+    end
+
+    function api:SetHeader(leftText: string, rightText: string)
+        leftTitle.Text = leftText
+        rightTitle.Text = rightText
+    end
+
+    return api
+end
+
+return RoundedUI
