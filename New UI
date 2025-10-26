@@ -496,7 +496,14 @@ end
     data.button.Font = (name == tabName) and FONT_B or FONT
 end
 
-            leftTitle.Text = tabName
+            -- Внутри btn.MouseButton1Click:Connect(function() ... end)
+for name, data in pairs(tabs) do
+    data.page.Visible = (name == tabName)
+    data.button.BackgroundColor3 = (name == tabName) and Theme.accent or Theme.control
+    data.button.Font = (name == tabName) and FONT_B or FONT
+end
+-- УДАЛИТЬ строку: leftTitle.Text = tabName
+
         end)
 
         -- UnderSections container (two columns)
@@ -586,19 +593,124 @@ rightCol.InputChanged:Connect(function(input) if openPopup then closePopup() end
 
             local sectionAPI = {}
 
-            function sectionAPI:Label(text)
-                local lbl = create("TextLabel", {
-                    Size = UDim2.new(1, 0, 0, 20),
-                    BackgroundTransparency = 1,
-                    Text = text,
-                    TextColor3 = Theme.textDim,
-                    Font = FONT,
-                    TextSize = 14,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                }, {})
-                lbl.Parent = stack
-                return lbl
-            end
+            function sectionAPI:Label(text, opts)
+    opts = opts or {}
+    local topMargin = opts.topMargin or 6
+    local align = opts.align or Enum.TextXAlignment.Left
+    local bold = opts.bold or false
+    local size = opts.size or 14
+    local color = opts.color or Theme.textDim
+
+    local spacer = create("Frame", {
+        Size = UDim2.new(1, 0, 0, topMargin),
+        BackgroundTransparency = 1,
+    }, {})
+    spacer.Parent = stack
+
+    local lbl = create("TextLabel", {
+        Size = UDim2.new(1, 0, 0, size + 2),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = color,
+        Font = bold and FONT_B or FONT,
+        TextSize = size,
+        TextXAlignment = align,
+    }, {})
+    lbl.Parent = stack
+    return lbl
+end
+
+function sectionAPI:ToggleWithBind(text, opts)
+    opts = opts or {}
+    local state = opts.Default or false
+    local bindKey: Enum.KeyCode = opts.Bind or Enum.KeyCode.F
+    local onToggle = opts.Callback
+    local onTrigger = opts.Trigger -- вызывается при нажатии бинда (опционально)
+
+    local row = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
+    }, {})
+    row.Parent = stack
+
+    -- toggle box
+    local box = create("TextButton", {
+        Size = UDim2.new(0, 28, 0, 28),
+        BackgroundColor3 = state and Theme.accent or Theme.control,
+        Text = "",
+        Position = UDim2.new(0, 0, 0, 3),
+    }, {})
+    addCorner(box, 6)
+    addStroke(box, Theme.stroke, 1, 0.5)
+    box.Parent = row
+
+    local lbl = create("TextLabel", {
+        Size = UDim2.new(0.55, 0, 1, 0),
+        Position = UDim2.new(0, 36, 0, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.text,
+        Font = FONT,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, {})
+    lbl.Parent = row
+
+    local keyBtn = create("TextButton", {
+        Size = UDim2.new(0.35, -6, 1, 0),
+        Position = UDim2.new(0.65, 6, 0, 0),
+        BackgroundColor3 = Theme.control,
+        TextColor3 = Theme.text,
+        Font = FONT_B,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Center,
+        Text = bindKey.Name,
+    }, {})
+    addCorner(keyBtn, 8)
+    addStroke(keyBtn, Theme.stroke, 1, 0.5)
+    keyBtn.Parent = row
+
+    local recording = false
+    local function setState(val)
+        state = val
+        box.BackgroundColor3 = state and Theme.accent or Theme.control
+        if onToggle then onToggle(state, bindKey) end
+    end
+
+    box.MouseButton1Click:Connect(function()
+        setState(not state)
+    end)
+
+    keyBtn.MouseButton1Click:Connect(function()
+        recording = true
+        keyBtn.Text = "Press key..."
+        keyBtn.BackgroundColor3 = Theme.accentDim
+    end)
+
+    UIS.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if recording and input.UserInputType == Enum.UserInputType.Keyboard then
+            bindKey = input.KeyCode
+            keyBtn.Text = bindKey.Name
+            keyBtn.BackgroundColor3 = Theme.control
+            recording = false
+        elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then
+            -- триггер по бинде
+            setState(not state)
+            if onTrigger then onTrigger(state, bindKey) end
+        end
+    end)
+
+    return {
+        Set = setState,
+        Get = function() return state end,
+        SetBind = function(newKey)
+            bindKey = newKey
+            keyBtn.Text = bindKey.Name
+        end
+    }
+end
+
 
             function sectionAPI:Separator()
                 local sep = create("Frame", {
@@ -803,6 +915,119 @@ end
                 }
             end
 
+-- общий замыкатель попапов в makeSection уже есть:
+-- local openPopup; local function closePopup() ... end
+
+function sectionAPI:DropDown(text, options, default, callback)
+    local container = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 56),
+        BackgroundTransparency = 1,
+    }, {})
+    container.Parent = stack
+
+    local lbl = create("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 20),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.text,
+        Font = FONT,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, {})
+    lbl.Parent = container
+
+    local current = default or options[1]
+    local btn = create("TextButton", {
+        Size = UDim2.new(1, 0, 0, 28),
+        Position = UDim2.new(0, 0, 0, 24),
+        BackgroundColor3 = Theme.control,
+        Text = tostring(current),
+        TextColor3 = Theme.text,
+        Font = FONT,
+        TextSize = 14,
+        ZIndex = 5,
+    }, {})
+    addCorner(btn, 8)
+    addStroke(btn, Theme.stroke, 1, 0.5)
+    btn.Parent = container
+
+    local function open()
+        if openPopup then closePopup() end
+
+        local popup = create("Frame", {
+            Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
+            Position = UDim2.new(0, 0, 0, 54),
+            BackgroundColor3 = Theme.panel2,
+            ZIndex = 50,
+            ClipsDescendants = true,
+        }, {})
+        addCorner(popup, 8)
+        addStroke(popup, Theme.stroke, 1, 0.5)
+        popup.Parent = container
+
+        local scroll = create("ScrollingFrame", {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1,
+            ScrollBarThickness = 6,
+            CanvasSize = UDim2.new(0, 0, 0, #options * 26),
+            ZIndex = 51,
+        }, {})
+        scroll.Parent = popup
+
+        local layout = Instance.new("UIListLayout")
+        layout.Padding = UDim.new(0, 4)
+        layout.Parent = scroll
+
+        for _, opt in ipairs(options) do
+            local item = create("TextButton", {
+                Size = UDim2.new(1, -8, 0, 24),
+                Position = UDim2.new(0, 4, 0, 0),
+                BackgroundColor3 = Theme.control,
+                Text = tostring(opt),
+                TextColor3 = Theme.text,
+                Font = FONT,
+                TextSize = 14,
+                ZIndex = 52,
+            }, {})
+            addCorner(item, 6)
+            item.Parent = scroll
+
+            item.MouseButton1Click:Connect(function()
+                current = opt
+                btn.Text = tostring(current)
+                if callback then callback(current) end
+                closePopup()
+            end)
+        end
+
+        -- клик вне попапа — закрыть
+        popup.InputBegan:Connect(function(input)
+            -- если кликнут за пределами, Roblox сам не даёт координаты, поэтому закрываем по повторному клику на кнопку
+        end)
+
+        openPopup = popup
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        if openPopup then
+            closePopup()
+        else
+            open()
+        end
+    end)
+
+    return {
+        Get = function() return current end,
+        Set = function(val)
+            if table.find(options, val) then
+                current = val
+                btn.Text = tostring(current)
+                if callback then callback(current) end
+            end
+        end
+    }
+end
+
 function sectionAPI:List(text, options, callback)
     local container = create("Frame", {
         Size = UDim2.new(1, 0, 0, 56),
@@ -830,13 +1055,13 @@ function sectionAPI:List(text, options, callback)
         TextColor3 = Theme.text,
         Font = FONT,
         TextSize = 14,
+        ZIndex = 5,
     }, {})
     addCorner(btn, 8)
     addStroke(btn, Theme.stroke, 1, 0.5)
     btn.Parent = container
 
     local selected = {}
-
     local function updateStatus()
         local keys = {}
         for name, on in pairs(selected) do
@@ -845,13 +1070,15 @@ function sectionAPI:List(text, options, callback)
         btn.Text = (#keys > 0) and table.concat(keys, ", ") or statusText
     end
 
-    btn.MouseButton1Click:Connect(function()
+    local function open()
         if openPopup then closePopup() end
 
         local popup = create("Frame", {
             Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
             Position = UDim2.new(0, 0, 0, 54),
             BackgroundColor3 = Theme.panel2,
+            ZIndex = 50,
+            ClipsDescendants = true,
         }, {})
         addCorner(popup, 8)
         addStroke(popup, Theme.stroke, 1, 0.5)
@@ -862,6 +1089,7 @@ function sectionAPI:List(text, options, callback)
             BackgroundTransparency = 1,
             ScrollBarThickness = 6,
             CanvasSize = UDim2.new(0, 0, 0, #options * 26),
+            ZIndex = 51,
         }, {})
         scroll.Parent = popup
 
@@ -878,6 +1106,7 @@ function sectionAPI:List(text, options, callback)
                 TextColor3 = Theme.text,
                 Font = FONT,
                 TextSize = 14,
+                ZIndex = 52,
             }, {})
             addCorner(item, 6)
             item.Parent = scroll
@@ -891,6 +1120,14 @@ function sectionAPI:List(text, options, callback)
         end
 
         openPopup = popup
+    end
+
+    btn.MouseButton1Click:Connect(function()
+        if openPopup then
+            closePopup()
+        else
+            open()
+        end
     end)
 
     return {
@@ -899,98 +1136,6 @@ function sectionAPI:List(text, options, callback)
             selected = tbl or {}
             updateStatus()
             if callback then callback(selected) end
-        end
-    }
-end
-
-            function sectionAPI:DropDown(text, options, default, callback)
-    local container = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 56),
-        BackgroundTransparency = 1,
-    }, {})
-    container.Parent = stack
-
-    local lbl = create("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 20),
-        BackgroundTransparency = 1,
-        Text = text,
-        TextColor3 = Theme.text,
-        Font = FONT,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-    }, {})
-    lbl.Parent = container
-
-    local current = default or options[1]
-    local btn = create("TextButton", {
-        Size = UDim2.new(1, 0, 0, 28),
-        Position = UDim2.new(0, 0, 0, 24),
-        BackgroundColor3 = Theme.control,
-        Text = tostring(current),
-        TextColor3 = Theme.text,
-        Font = FONT,
-        TextSize = 14,
-    }, {})
-    addCorner(btn, 8)
-    addStroke(btn, Theme.stroke, 1, 0.5)
-    btn.Parent = container
-
-    btn.MouseButton1Click:Connect(function()
-        if openPopup then closePopup() end
-
-        local popup = create("Frame", {
-            Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
-            Position = UDim2.new(0, 0, 0, 54),
-            BackgroundColor3 = Theme.panel2,
-        }, {})
-        addCorner(popup, 8)
-        addStroke(popup, Theme.stroke, 1, 0.5)
-        popup.Parent = container
-
-        local scroll = create("ScrollingFrame", {
-            Size = UDim2.new(1, 0, 1, 0),
-            BackgroundTransparency = 1,
-            ScrollBarThickness = 6,
-            CanvasSize = UDim2.new(0, 0, 0, #options * 26),
-        }, {})
-        scroll.Parent = popup
-
-        local layout = Instance.new("UIListLayout")
-        layout.Padding = UDim.new(0, 4)
-        layout.Parent = scroll
-
-        for _, opt in ipairs(options) do
-            local item = create("TextButton", {
-                Size = UDim2.new(1, -8, 0, 24),
-                Position = UDim2.new(0, 4, 0, 0),
-                BackgroundColor3 = Theme.control,
-                Text = tostring(opt),
-                TextColor3 = Theme.text,
-                Font = FONT,
-                TextSize = 14,
-            }, {})
-            addCorner(item, 6)
-            item.Parent = scroll
-
-            item.MouseButton1Click:Connect(function()
-                current = opt
-                btn.Text = tostring(current)
-                if callback then callback(current) end
-                closePopup()
-            end)
-        end
-
-        openPopup = popup
-    end)
-
-    return {
-        Get = function() return current end,
-        Set = function(val)
-            if table.find(options, val) then
-                current = val
-                btn.Text = tostring(current)
-                if callback then callback(current) end
-            end
         end
     }
 end
@@ -1078,22 +1223,16 @@ function sectionAPI:TextBind(labelText, initKey, callback)
 end
 
 function sectionAPI:ToggleColor(text, defaultState, defaultColor, callback)
-    -- создаём ряд для тумблера + кнопки цвета
     local row = create("Frame", {
         Size = UDim2.new(1, 0, 0, 34),
         BackgroundTransparency = 1,
     }, {})
     row.Parent = stack
 
-    -- сам тумблер слева
-    local toggle = sectionAPI:Toggle(text, {
-        Default = defaultState,
-        Callback = function(s)
-            if callback then callback(s, colorBtn.BackgroundColor3) end
-        end
-    })
+    -- создаём тумблер без Callback
+    local toggleAPI = sectionAPI:Toggle(text, { Default = defaultState })
 
-    -- кнопка цвета справа
+    -- кнопка цвета
     local colorBtn = create("TextButton", {
         Size = UDim2.new(0, 28, 0, 28),
         BackgroundColor3 = defaultColor or Theme.accent,
@@ -1104,79 +1243,111 @@ function sectionAPI:ToggleColor(text, defaultState, defaultColor, callback)
     addStroke(colorBtn, Theme.stroke, 1, 0.5)
     colorBtn.Parent = row
 
+    -- локальная обёртка оповещения
+    local function notify()
+        if callback then
+            callback(toggleAPI.Get(), colorBtn.BackgroundColor3)
+        end
+    end
+
+    -- клики по тумблеру
+    -- переиспользуем его API
+    -- оборачиваем Set, чтобы уведомлять
+    local oldSet = toggleAPI.Set
+    toggleAPI.Set = function(state)
+        oldSet(state)
+        notify()
+    end
+
     colorBtn.MouseButton1Click:Connect(function()
-        -- передаём корневой ScreenGui окна, а не родительские .Parent.Parent
         local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
         createColorPickerPopup(rootGui, colorBtn.BackgroundColor3, function(newColor)
             colorBtn.BackgroundColor3 = newColor
-            if callback then callback(toggle.Get(), newColor) end
+            notify()
         end)
     end)
 
+    -- начальное уведомление (если нужно)
+    notify()
+
     return {
         Set = function(state, color)
-            toggle.Set(state)
+            toggleAPI.Set(state)
             if color then colorBtn.BackgroundColor3 = color end
-            if callback then callback(state, colorBtn.BackgroundColor3) end
+            notify()
         end,
-        Get = function() return toggle.Get(), colorBtn.BackgroundColor3 end
+        Get = function()
+            return toggleAPI.Get(), colorBtn.BackgroundColor3
+        end
     }
 end
 
             function sectionAPI:ToggleDualColor(text, defaultState, c1, c2, callback)
-                local toggle = sectionAPI:Toggle(text, {Default = defaultState, Callback = function(s)
-                    if callback then callback(s, btn1.BackgroundColor3, btn2.BackgroundColor3) end
-                end})
+    local row = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
+    }, {})
+    row.Parent = stack
 
-                local row = create("Frame", {
-                    Size = UDim2.new(1, 0, 0, 34),
-                    BackgroundTransparency = 1,
-                }, {})
-                row.Parent = stack
+    local toggleAPI = sectionAPI:Toggle(text, { Default = defaultState })
 
-                local btn1 = create("TextButton", {
-                    Size = UDim2.new(0, 28, 0, 28),
-                    BackgroundColor3 = c1 or Theme.accent,
-                    Text = "",
-                    Position = UDim2.new(1, -64, 0, 3),
-                }, {})
-                addCorner(btn1, 6)
-                addStroke(btn1, Theme.stroke, 1, 0.5)
-                btn1.Parent = row
+    local btn1 = create("TextButton", {
+        Size = UDim2.new(0, 28, 0, 28),
+        BackgroundColor3 = c1 or Theme.accent,
+        Text = "",
+        Position = UDim2.new(1, -64, 0, 3),
+    }, {})
+    addCorner(btn1, 6)
+    addStroke(btn1, Theme.stroke, 1, 0.5)
+    btn1.Parent = row
 
-                local btn2 = create("TextButton", {
-                    Size = UDim2.new(0, 28, 0, 28),
-                    BackgroundColor3 = c2 or Theme.good,
-                    Text = "",
-                    Position = UDim2.new(1, -32, 0, 3),
-                }, {})
-                addCorner(btn2, 6)
-                addStroke(btn2, Theme.stroke, 1, 0.5)
-                btn2.Parent = row
+    local btn2 = create("TextButton", {
+        Size = UDim2.new(0, 28, 0, 28),
+        BackgroundColor3 = c2 or Theme.good,
+        Text = "",
+        Position = UDim2.new(1, -32, 0, 3),
+    }, {})
+    addCorner(btn2, 6)
+    addStroke(btn2, Theme.stroke, 1, 0.5)
+    btn2.Parent = row
 
-                btn1.MouseButton1Click:Connect(function()
-                    createColorPickerPopup(sec.Parent.Parent.Parent, btn1.BackgroundColor3, function(newColor)
-                        btn1.BackgroundColor3 = newColor
-                        if callback then callback(toggle.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3) end
-                    end)
-                end)
-                btn2.MouseButton1Click:Connect(function()
-                    createColorPickerPopup(sec.Parent.Parent.Parent, btn2.BackgroundColor3, function(newColor)
-                        btn2.BackgroundColor3 = newColor
-                        if callback then callback(toggle.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3) end
-                    end)
-                end)
+    local function notify()
+        if callback then
+            callback(toggleAPI.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3)
+        end
+    end
 
-                return {
-                    Set = function(state, nc1, nc2)
-                        toggle.Set(state)
-                        if nc1 then btn1.BackgroundColor3 = nc1 end
-                        if nc2 then btn2.BackgroundColor3 = nc2 end
-                        if callback then callback(state, btn1.BackgroundColor3, btn2.BackgroundColor3) end
-                    end,
-                    Get = function() return toggle.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3 end
-                }
-            end
+    local oldSet = toggleAPI.Set
+    toggleAPI.Set = function(state)
+        oldSet(state)
+        notify()
+    end
+
+    local function openPicker(btn)
+        local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
+        createColorPickerPopup(rootGui, btn.BackgroundColor3, function(newColor)
+            btn.BackgroundColor3 = newColor
+            notify()
+        end)
+    end
+
+    btn1.MouseButton1Click:Connect(function() openPicker(btn1) end)
+    btn2.MouseButton1Click:Connect(function() openPicker(btn2) end)
+
+    notify()
+
+    return {
+        Set = function(state, nc1, nc2)
+            toggleAPI.Set(state)
+            if nc1 then btn1.BackgroundColor3 = nc1 end
+            if nc2 then btn2.BackgroundColor3 = nc2 end
+            notify()
+        end,
+        Get = function()
+            return toggleAPI.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3
+        end
+    }
+end
 
             return {
                 Raw = sec,
