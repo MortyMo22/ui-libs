@@ -258,7 +258,12 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         b = math.clamp(b, 0, 255)
         preview.BackgroundColor3 = Color3.fromRGB(r, g, b)
         H, S, V = preview.BackgroundColor3:ToHSV()
-        for _, s in ipairs(sliders) do s.set and s.set((s.bar == s.bar) and 0 or 0) end
+        for _, s in ipairs(sliders) do
+    if s.set then
+        s.set(0)
+    end
+end
+
         syncFromPreview()
     end
 
