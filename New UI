@@ -327,11 +327,20 @@ end
     end)
 
     overlay.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            -- clicking outside closes
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        local pos = Vector2.new(input.Position.X, input.Position.Y)
+        local p0 = popup.AbsolutePosition
+        local ps = popup.AbsoluteSize
+        local inside =
+            pos.X >= p0.X and pos.X <= p0.X + ps.X and
+            pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
+
+        if not inside then
             overlay:Destroy()
         end
-    end)
+    end
+end)
+
 end
 
 -- API: Window -> Tabs -> UnderSections -> Controls
@@ -547,8 +556,7 @@ local function closePopup()
 end
 
 -- Закрывать попап при скролле колонны
-leftCol.InputChanged:Connect(function(input) if openPopup then closePopup() end end)
-rightCol.InputChanged:Connect(function(input) if openPopup then closePopup() end end)
+
 
 		
             local sec = create("Frame", {
@@ -874,17 +882,20 @@ resetBtn.Parent = actionsRow
 resetBtn.Position = UDim2.new(1, -68, 0, 2)
 
 
-                local function set(v)
+local function set(v)
     value = math.clamp(v, min, max)
     local rel = (value - min) / (max - min)
     fill.Size = UDim2.new(rel, 0, 1, 0)
+
     local display
     if showPercent then
-        display = string.format("%d%%", math.floor(rel * 100 + 0.5))
+        display = string.format("%d", math.floor(rel * 100 + 0.5))
+        top.Text = ("%s: %s%%"):format(text, display)
     else
-        display = string.format("%.2f", value):gsub(",","") -- 2 знака
+        display = string.format("%.2f", value):gsub(",", "")
+        top.Text = ("%s: %s%s"):format(text, display, suffix)
     end
-    top.Text = ("%s: %s%s"):format(text, display, suffix)
+
     if callback then callback(value) end
 end
 
@@ -954,6 +965,16 @@ function sectionAPI:DropDown(text, options, default, callback)
     local function open()
         if openPopup then closePopup() end
 
+        -- оверлей для клика вне попапа
+        local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
+        local clickOverlay = create("TextButton", {
+            Size = UDim2.fromScale(1,1),
+            BackgroundTransparency = 1,
+            Text = "",
+            ZIndex = 49,
+        }, {})
+        clickOverlay.Parent = rootGui
+
         local popup = create("Frame", {
             Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
             Position = UDim2.new(0, 0, 0, 54),
@@ -997,14 +1018,17 @@ function sectionAPI:DropDown(text, options, default, callback)
                 btn.Text = tostring(current)
                 if callback then callback(current) end
                 closePopup()
+                if clickOverlay then clickOverlay:Destroy() end
             end)
         end
 
-        -- клик вне попапа — закрыть
-        popup.InputBegan:Connect(function(input)
-            -- если кликнут за пределами, Roblox сам не даёт координаты, поэтому закрываем по повторному клику на кнопку
+        -- клик вне — закрыть
+        clickOverlay.MouseButton1Click:Connect(function()
+            closePopup()
+            if clickOverlay then clickOverlay:Destroy() end
         end)
 
+        -- при открытии другого попапа — закрыть
         openPopup = popup
     end
 
@@ -1073,6 +1097,15 @@ function sectionAPI:List(text, options, callback)
     local function open()
         if openPopup then closePopup() end
 
+        local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
+        local clickOverlay = create("TextButton", {
+            Size = UDim2.fromScale(1,1),
+            BackgroundTransparency = 1,
+            Text = "",
+            ZIndex = 49,
+        }, {})
+        clickOverlay.Parent = rootGui
+
         local popup = create("Frame", {
             Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
             Position = UDim2.new(0, 0, 0, 54),
@@ -1118,6 +1151,11 @@ function sectionAPI:List(text, options, callback)
                 if callback then callback(selected) end
             end)
         end
+
+        clickOverlay.MouseButton1Click:Connect(function()
+            closePopup()
+            if clickOverlay then clickOverlay:Destroy() end
+        end)
 
         openPopup = popup
     end
