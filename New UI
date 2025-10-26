@@ -491,9 +491,11 @@ end
         -- Switch tab on click
         btn.MouseButton1Click:Connect(function()
             for name, data in pairs(tabs) do
-                data.page.Visible = (name == tabName)
-                data.button.BackgroundColor3 = (name == tabName) and Theme.accent or Theme.control
-            end
+    data.page.Visible = (name == tabName)
+    data.button.BackgroundColor3 = (name == tabName) and Theme.accent or Theme.control
+    data.button.Font = (name == tabName) and FONT_B or FONT
+end
+
             leftTitle.Text = tabName
         end)
 
@@ -704,7 +706,7 @@ rightCol.InputChanged:Connect(function(input) if openPopup then closePopup() end
                 local showPercent = cfg.showPercent or false
 
                 local container = create("Frame", {
-                    Size = UDim2.new(1, 0, 0, 56),
+                    Size = UDim2.new(1, 0, 0, 72),
                     BackgroundTransparency = 1,
                 }, {})
                 container.Parent = stack
@@ -735,18 +737,30 @@ rightCol.InputChanged:Connect(function(input) if openPopup then closePopup() end
                 addCorner(fill, 8)
                 fill.Parent = bar
 
-                local resetBtn = create("TextButton", {
-                    Size = UDim2.new(0, 64, 0, 20),
-                    Position = UDim2.new(1, -68, 0, 24),
-                    BackgroundColor3 = Theme.control,
-                    Text = "Reset",
-                    TextColor3 = Theme.text,
-                    Font = FONT_B,
-                    TextSize = 12,
-                }, {})
-                addCorner(resetBtn, 6)
-                withHover(resetBtn, Theme.control, Theme.hover)
-                resetBtn.Parent = container
+                -- создаём кнопку Reset как раньше
+local resetBtn = create("TextButton", {
+    Size = UDim2.new(0, 64, 0, 20),
+    BackgroundColor3 = Theme.control,
+    Text = "Reset",
+    TextColor3 = Theme.text,
+    Font = FONT_B,
+    TextSize = 12,
+}, {})
+addCorner(resetBtn, 6)
+withHover(resetBtn, Theme.control, Theme.hover)
+
+-- создаём отдельную строку под слайдером для кнопки Reset
+local actionsRow = create("Frame", {
+    Size = UDim2.new(1, 0, 0, 24),
+    Position = UDim2.new(0, 0, 0, 46), -- ниже бара
+    BackgroundTransparency = 1,
+}, {})
+actionsRow.Parent = container
+
+-- теперь кнопка живёт в actionsRow
+resetBtn.Parent = actionsRow
+resetBtn.Position = UDim2.new(1, -68, 0, 2)
+
 
                 local function set(v)
     value = math.clamp(v, min, max)
