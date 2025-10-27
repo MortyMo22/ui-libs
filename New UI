@@ -818,119 +818,118 @@ end
                 }
             end
 
-            function sectionAPI:Slider(text, cfg, callback)
-                local min = cfg.min or 0
-                local max = cfg.max or 100
-                local value = cfg.default or min
-                local suffix = cfg.suffix or ""
-                local showPercent = cfg.showPercent or false
-				local showReset = (cfg.showReset ~= false) -- по умолчанию true, если хочешь скрыть: передай showReset = false
+function sectionAPI:Slider(text, cfg, callback)
+    local min = cfg.min or 0
+    local max = cfg.max or 100
+    local value = cfg.default or min
+    local suffix = cfg.suffix or ""
+    local showPercent = cfg.showPercent or false
+    local showReset = (cfg.showReset ~= false)
 
-                local container = create("Frame", {
-                    Size = UDim2.new(1, 0, 0, 72),
-                    BackgroundTransparency = 1,
-                }, {})
-                container.Parent = stack
-
-                local top = create("TextLabel", {
-                    Size = UDim2.new(1, 0, 0, 20),
-                    BackgroundTransparency = 1,
-                    Text = ("%s: %s%s"):format(text, tostring(value), suffix),
-                    TextColor3 = Theme.text,
-                    Font = FONT,
-                    TextSize = 14,
-                    TextXAlignment = Enum.TextXAlignment.Left,
-                }, {})
-                top.Parent = container
-
-                local bar = create("Frame", {
-                    Size = UDim2.new(1, 0, 0, 18),
-                    Position = UDim2.new(0, 0, 0, 26),
-                    BackgroundColor3 = Theme.control,
-                }, {})
-                addCorner(bar, 8)
-                bar.Parent = container
-
-                local fill = create("Frame", {
-                    Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
-                    BackgroundColor3 = Theme.accent,
-                }, {})
-                addCorner(fill, 8)
-                fill.Parent = bar
-
-if showReset then
-    local resetBtn = create("TextButton", {
-        Size = UDim2.new(0, 64, 0, 20),
-        BackgroundColor3 = Theme.control,
-        Text = "Reset",
-        TextColor3 = Theme.text,
-        Font = FONT_B,
-        TextSize = 12,
-    }, {})
-    addCorner(resetBtn, 6)
-    withHover(resetBtn, Theme.control, Theme.hover)
-
-    local actionsRow = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 24),
-        Position = UDim2.new(0, 0, 0, 46),
+    local container = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 72),
         BackgroundTransparency = 1,
     }, {})
-    actionsRow.Parent = container
+    container.Parent = stack
 
-    resetBtn.Parent = actionsRow
-    resetBtn.Position = UDim2.new(1, -68, 0, 2)
+    local top = create("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 20),
+        BackgroundTransparency = 1,
+        Text = ("%s: %s%s"):format(text, tostring(value), suffix),
+        TextColor3 = Theme.text,
+        Font = FONT,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, {})
+    top.Parent = container
 
-    resetBtn.MouseButton1Click:Connect(function()
-        set(cfg.default or min)
-    end)
-end
+    local bar = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 18),
+        Position = UDim2.new(0, 0, 0, 26),
+        BackgroundColor3 = Theme.control,
+    }, {})
+    addCorner(bar, 8)
+    bar.Parent = container
 
+    local fill = create("Frame", {
+        Size = UDim2.new((value - min) / (max - min), 0, 1, 0),
+        BackgroundColor3 = Theme.accent,
+    }, {})
+    addCorner(fill, 8)
+    fill.Parent = bar
 
+    -- forward declare
+    local set
 
-local function set(v)
-    value = math.clamp(v, min, max)
-    local rel = (value - min) / (max - min)
-    fill.Size = UDim2.new(rel, 0, 1, 0)
+    -- define set BEFORE any handler uses it
+    set = function(v)
+        value = math.clamp(v, min, max)
+        local rel = (value - min) / (max - min)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
 
-    local display
-    if showPercent then
-        display = string.format("%d", math.floor(rel * 100 + 0.5))
-        top.Text = ("%s: %s%%"):format(text, display)
-    else
-        display = string.format("%.2f", value):gsub(",", "")
-        top.Text = ("%s: %s%s"):format(text, display, suffix)
+        if showPercent then
+            local pct = math.floor(rel * 100 + 0.5)
+            top.Text = ("%s: %d%%"):format(text, pct)
+        else
+            local display = string.format("%.2f", value):gsub(",", "")
+            top.Text = ("%s: %s%s"):format(text, display, suffix)
+        end
+
+        if callback then callback(value) end
     end
 
-    if callback then callback(value) end
+    -- Reset row (optional)
+    if showReset then
+        local resetBtn = create("TextButton", {
+            Size = UDim2.new(0, 64, 0, 20),
+            BackgroundColor3 = Theme.control,
+            Text = "Reset",
+            TextColor3 = Theme.text,
+            Font = FONT_B,
+            TextSize = 12,
+        }, {})
+        addCorner(resetBtn, 6)
+        withHover(resetBtn, Theme.control, Theme.hover)
+
+        local actionsRow = create("Frame", {
+            Size = UDim2.new(1, 0, 0, 24),
+            Position = UDim2.new(0, 0, 0, 46),
+            BackgroundTransparency = 1,
+        }, {})
+        actionsRow.Parent = container
+
+        resetBtn.Parent = actionsRow
+        resetBtn.Position = UDim2.new(1, -68, 0, 2)
+
+        resetBtn.MouseButton1Click:Connect(function()
+            -- guard: set exists now
+            set(cfg.default or min)
+        end)
+    end
+
+    bar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local conn
+            conn = UIS.InputChanged:Connect(function(ch)
+                if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
+                    local rel = math.clamp((ch.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+                    set(min + (max - min) * rel)
+                end
+            end)
+            UIS.InputEnded:Connect(function(endInput)
+                if endInput.UserInputType == input.UserInputType then
+                    if conn then conn:Disconnect() end
+                end
+            end)
+        end
+    end)
+
+    return {
+        Set = set,
+        Get = function() return value end
+    }
 end
 
-                bar.InputBegan:Connect(function(input)
-                    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                        local conn
-                        conn = UIS.InputChanged:Connect(function(ch)
-                            if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
-                                local rel = math.clamp((ch.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
-                                set(min + (max - min) * rel)
-                            end
-                        end)
-                        UIS.InputEnded:Connect(function(endInput)
-                            if endInput.UserInputType == input.UserInputType then
-                                if conn then conn:Disconnect() end
-                            end
-                        end)
-                    end
-                end)
-
-              
-
-                return {
-                    Set = set,
-                    Get = function() return value end
-                }
-            end
-
--- общий замыкатель попапов в makeSection уже есть:
--- local openPopup; local function closePopup() ... end
 
 function sectionAPI:DropDown(text, options, default, callback)
     local container = create("Frame", {
