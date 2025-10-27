@@ -79,18 +79,19 @@ local RoundedUI = {}
 
 -- Internal: Color picker popup
 local function createColorPickerPopup(rootGui, startColor, onApply)
-    local overlay = create("Frame", {
+    local overlay = create("TextButton", {
         Name = "Overlay",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.fromRGB(0,0,0),
         BackgroundTransparency = 0.35,
+        Text = "",
         ZIndex = 200,
     }, {})
     overlay.Parent = rootGui
 
     local popup = create("Frame", {
-        Size = UDim2.new(0.34, 0, 0.5, 0),
-        Position = UDim2.new(0.33, 0, 0.25, 0),
+        Size = UDim2.new(0, 320, 0, 360),
+        Position = UDim2.new(0.5, -160, 0.5, -180),
         BackgroundColor3 = Theme.panel,
         ZIndex = 201,
     }, {})
@@ -99,19 +100,6 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     addStroke(popup, Theme.stroke, 1, 0.5)
     addPadding(popup, 12)
 
-    -- вертикальный стек
-    local stack = create("Frame", {
-        Size = UDim2.new(1,0,1,0),
-        BackgroundTransparency = 1,
-        ZIndex = 202,
-    }, {})
-    stack.Parent = popup
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0,8)
-    layout.FillDirection = Enum.FillDirection.Vertical
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Parent = stack
-
     local title = create("TextLabel", {
         Size = UDim2.new(1, 0, 0, 28),
         BackgroundTransparency = 1,
@@ -119,197 +107,192 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         TextColor3 = Theme.text,
         Font = FONT_B,
         TextSize = 18,
-        ZIndex = 203,
+        ZIndex = 202,
         TextXAlignment = Enum.TextXAlignment.Center,
-        LayoutOrder = 1,
     }, {})
-    title.Parent = stack
-
-    local preview = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundColor3 = startColor or Theme.accent,
-        ZIndex = 203,
-        LayoutOrder = 2,
-    }, {})
-    preview.Parent = stack
-    addCorner(preview, 8)
-    addStroke(preview, Theme.stroke, 1, 0.5)
+    title.Parent = popup
 
     -- HSV backing
     local H,S,V = 0,1,1
     if startColor then H,S,V = startColor:ToHSV() end
-    local function updatePreviewFromHSV()
-        preview.BackgroundColor3 = Color3.fromHSV(H,S,V)
-    end
 
-    local sliders = {}
-    local function addSlider(labelText, default, onChange, order)
-        local container = create("Frame", {
-            Size = UDim2.new(1,0,0,50),
-            BackgroundTransparency = 1,
-            ZIndex = 203,
-            LayoutOrder = order,
-        }, {})
-        container.Parent = stack
-
-        local lbl = create("TextLabel", {
-            Size = UDim2.new(1,0,0,20),
-            BackgroundTransparency = 1,
-            Text = labelText,
-            TextColor3 = Theme.textDim,
-            Font = FONT,
-            TextSize = 14,
-            ZIndex = 203,
-            TextXAlignment = Enum.TextXAlignment.Left,
-        }, {})
-        lbl.Parent = container
-
-        local bar = create("Frame", {
-            Size = UDim2.new(1,0,0,18),
-            Position = UDim2.new(0,0,0,24),
-            BackgroundColor3 = Theme.control,
-            ZIndex = 203,
-        }, {})
-        bar.Parent = container
-        addCorner(bar,8)
-
-        local fill = create("Frame", {
-            Size = UDim2.new(default,0,1,0),
-            BackgroundColor3 = Theme.accent,
-            ZIndex = 204,
-        }, {})
-        fill.Parent = bar
-        addCorner(fill,8)
-
-        bar.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                local conn
-                conn = UIS.InputChanged:Connect(function(ch)
-                    if ch.UserInputType == Enum.UserInputType.MouseMovement then
-                        local rel = math.clamp((ch.Position.X - bar.AbsolutePosition.X)/bar.AbsoluteSize.X,0,1)
-                        fill.Size = UDim2.new(rel,0,1,0)
-                        onChange(rel)
-                        updatePreviewFromHSV()
-                        syncFromPreview()
-                    end
-                end)
-                UIS.InputEnded:Connect(function(endInput)
-                    if endInput.UserInputType == input.UserInputType then
-                        if conn then conn:Disconnect() end
-                    end
-                end)
-            end
-        end)
-    end
-
-    addSlider("Hue", H, function(v) H=v end, 3)
-    addSlider("Saturation", S, function(v) S=v end, 4)
-    addSlider("Value", V, function(v) V=v end, 5)
-
-    local inputRow = create("Frame", {
-        Size = UDim2.new(1,0,0,36),
-        BackgroundTransparency = 1,
-        ZIndex = 203,
-        LayoutOrder = 6,
+    -- квадрат палитры (Saturation/Value)
+    local svFrame = create("Frame", {
+        Size = UDim2.new(0, 260, 0, 260),
+        Position = UDim2.new(0, 0, 0, 40),
+        BackgroundColor3 = Color3.fromHSV(H,1,1),
+        ZIndex = 202,
+        ClipsDescendants = true,
     }, {})
-    inputRow.Parent = stack
+    svFrame.Parent = popup
+    addStroke(svFrame, Theme.stroke, 1, 0.5)
 
-    local function makeBox(ph,pos)
-        local box = create("TextBox", {
-            Size = UDim2.new(0.24,0,1,0),
-            Position = pos,
-            BackgroundColor3 = Theme.panel2,
-            TextColor3 = Theme.text,
-            Font = FONT,
-            TextSize = 14,
-            PlaceholderText = ph,
-            ClearTextOnFocus = false,
-            ZIndex = 203,
-        }, {})
-        addCorner(box,8)
-        addStroke(box,Theme.stroke,1,0.6)
-        box.Parent = inputRow
-        return box
-    end
-    local rBox = makeBox("R",UDim2.new(0,0,0,0))
-    local gBox = makeBox("G",UDim2.new(0.26,0,0,0))
-    local bBox = makeBox("B",UDim2.new(0.52,0,0,0))
-    local hexBox = makeBox("#HEX",UDim2.new(0.78,0,0,0))
+    -- белый → прозрачный градиент (слева направо)
+    local whiteGrad = Instance.new("UIGradient")
+    whiteGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.new(1,1,1)),
+        ColorSequenceKeypoint.new(1, Color3.new(1,1,1))
+    }
+    whiteGrad.Transparency = NumberSequence.new{
+        NumberSequenceKeypoint.new(0,0),
+        NumberSequenceKeypoint.new(1,1)
+    }
+    whiteGrad.Rotation = 0
+    whiteGrad.Parent = svFrame
 
-    local function syncFromPreview()
-        local c = preview.BackgroundColor3
-        local r,g,b = math.floor(c.R*255), math.floor(c.G*255), math.floor(c.B*255)
-        rBox.Text, gBox.Text, bBox.Text = tostring(r), tostring(g), tostring(b)
-        hexBox.Text = string.format("#%02X%02X%02X",r,g,b)
-    end
-    updatePreviewFromHSV()
-    syncFromPreview()
+    -- чёрный → прозрачный градиент (сверху вниз)
+    local blackGrad = Instance.new("UIGradient")
+    blackGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.new(0,0,0)),
+        ColorSequenceKeypoint.new(1, Color3.new(0,0,0))
+    }
+    blackGrad.Transparency = NumberSequence.new{
+        NumberSequenceKeypoint.new(0,1),
+        NumberSequenceKeypoint.new(1,0)
+    }
+    blackGrad.Rotation = 90
+    blackGrad.Parent = svFrame
 
-    local function setFromRGB()
-        local r = tonumber(rBox.Text) or 0
-        local g = tonumber(gBox.Text) or 0
-        local b = tonumber(bBox.Text) or 0
-        preview.BackgroundColor3 = Color3.fromRGB(r,g,b)
-        H,S,V = preview.BackgroundColor3:ToHSV()
-        updatePreviewFromHSV()
-        syncFromPreview()
+    -- индикатор выбора
+    local svIndicator = create("Frame", {
+        Size = UDim2.new(0,10,0,10),
+        BackgroundColor3 = Color3.new(1,1,1),
+        BorderSizePixel = 0,
+        ZIndex = 204,
+    }, {})
+    svIndicator.Parent = svFrame
+    addCorner(svIndicator,5)
+
+    -- hue bar
+    local hueFrame = create("Frame", {
+        Size = UDim2.new(0, 20, 0, 260),
+        Position = UDim2.new(0, 270, 0, 40),
+        BackgroundColor3 = Color3.new(1,0,0),
+        ZIndex = 202,
+    }, {})
+    hueFrame.Parent = popup
+    addStroke(hueFrame, Theme.stroke, 1, 0.5)
+
+    local hueGrad = Instance.new("UIGradient")
+    hueGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromHSV(0,1,1)),
+        ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17,1,1)),
+        ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33,1,1)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5,1,1)),
+        ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67,1,1)),
+        ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83,1,1)),
+        ColorSequenceKeypoint.new(1, Color3.fromHSV(1,1,1)),
+    }
+    hueGrad.Rotation = 90
+    hueGrad.Parent = hueFrame
+
+    local hueIndicator = create("Frame", {
+        Size = UDim2.new(1,0,0,2),
+        BackgroundColor3 = Color3.new(1,1,1),
+        BorderSizePixel = 0,
+        ZIndex = 204,
+    }, {})
+    hueIndicator.Parent = hueFrame
+
+    -- предпросмотр
+    local preview = create("Frame", {
+        Size = UDim2.new(1,0,0,30),
+        Position = UDim2.new(0,0,0,310),
+        BackgroundColor3 = Color3.fromHSV(H,S,V),
+        ZIndex = 202,
+    }, {})
+    preview.Parent = popup
+    addCorner(preview,6)
+    addStroke(preview,Theme.stroke,1,0.5)
+
+    -- функции обновления
+    local function updatePreview()
+        preview.BackgroundColor3 = Color3.fromHSV(H,S,V)
+        svFrame.BackgroundColor3 = Color3.fromHSV(H,1,1)
+        svIndicator.Position = UDim2.new(S, -5, 1-V, -5)
+        hueIndicator.Position = UDim2.new(0,0,H, -1)
     end
-    local function setFromHex()
-        local t = hexBox.Text:gsub("#","")
-        if #t==6 then
-            local r = tonumber(t:sub(1,2),16) or 0
-            local g = tonumber(t:sub(3,4),16) or 0
-            local b = tonumber(t:sub(5,6),16) or 0
-            preview.BackgroundColor3 = Color3.fromRGB(r,g,b)
-            H,S,V = preview.BackgroundColor3:ToHSV()
-            updatePreviewFromHSV()
-            syncFromPreview()
+    updatePreview()
+
+    -- обработка кликов по квадрату
+    svFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local function update(pos)
+                local relX = math.clamp((pos.X - svFrame.AbsolutePosition.X)/svFrame.AbsoluteSize.X,0,1)
+                local relY = math.clamp((pos.Y - svFrame.AbsolutePosition.Y)/svFrame.AbsoluteSize.Y,0,1)
+                S = relX
+                V = 1-relY
+                updatePreview()
+            end
+            update(input.Position)
+            local conn
+            conn = UIS.InputChanged:Connect(function(ch)
+                if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
+                    update(ch.Position)
+                end
+            end)
+            UIS.InputEnded:Connect(function(endInput)
+                if endInput.UserInputType == input.UserInputType then
+                    if conn then conn:Disconnect() end
+                end
+            end)
         end
-    end
-    rBox.FocusLost:Connect(setFromRGB)
-    gBox.FocusLost:Connect(setFromRGB)
-    bBox.FocusLost:Connect(setFromRGB)
-        hexBox.FocusLost:Connect(setFromHex)
+    end)
+
+    -- обработка кликов по hue bar
+    hueFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local function update(pos)
+                local relY = math.clamp((pos.Y - hueFrame.AbsolutePosition.Y)/hueFrame.AbsoluteSize.Y,0,1)
+                H = relY
+                updatePreview()
+            end
+            update(input.Position)
+            local conn
+            conn = UIS.InputChanged:Connect(function(ch)
+                if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
+                    update(ch.Position)
+                end
+            end)
+            UIS.InputEnded:Connect(function(endInput)
+                if endInput.UserInputType == input.UserInputType then
+                    if conn then conn:Disconnect() end
+                end
+            end)
+        end
+    end)
 
     -- кнопки Apply/Cancel
-    local buttonsRow = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 40),
-        BackgroundTransparency = 1,
-        ZIndex = 203,
-        LayoutOrder = 7,
-    }, {})
-    buttonsRow.Parent = stack
-
     local applyBtn = create("TextButton", {
-        Size = UDim2.new(0.48, 0, 1, 0),
+        Size = UDim2.new(0.48,0,0,30),
+        Position = UDim2.new(0,0,1,-35),
         BackgroundColor3 = Theme.accent,
         Text = "Apply",
         TextColor3 = Theme.text,
         Font = FONT_B,
         TextSize = 16,
-        ZIndex = 204,
+        ZIndex = 202,
     }, {})
-    addCorner(applyBtn, 8)
-    withHover(applyBtn, Theme.accent, Theme.accentDim)
-    applyBtn.Parent = buttonsRow
+    addCorner(applyBtn,6)
+    applyBtn.Parent = popup
 
-    local cancelBtn = create("TextButton", {
-        Size = UDim2.new(0.48, 0, 1, 0),
-        Position = UDim2.new(0.52, 0, 0, 0),
+        local cancelBtn = create("TextButton", {
+        Size = UDim2.new(0.48,0,0,30),
+        Position = UDim2.new(0.52,0,1,-35),
         BackgroundColor3 = Theme.control,
         Text = "Cancel",
         TextColor3 = Theme.text,
         Font = FONT_B,
         TextSize = 16,
-        ZIndex = 204,
+        ZIndex = 202,
     }, {})
-    addCorner(cancelBtn, 8)
-    withHover(cancelBtn, Theme.control, Theme.hover)
-    cancelBtn.Parent = buttonsRow
+    addCorner(cancelBtn,6)
+    cancelBtn.Parent = popup
 
+    -- обработчики кнопок
     applyBtn.MouseButton1Click:Connect(function()
         if onApply then
-            onApply(preview.BackgroundColor3)
+            onApply(Color3.fromHSV(H,S,V))
         end
         overlay:Destroy()
     end)
@@ -324,7 +307,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         local pos = Vector2.new(mouse.X, mouse.Y)
         local p0 = popup.AbsolutePosition
         local ps = popup.AbsoluteSize
-        local inside = pos.X >= p0.X and pos.X <= p0.X + ps.X and pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
+        local inside = pos.X >= p0.X and pos.X <= p0.X + ps.X
+                      and pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
         if not inside then
             overlay:Destroy()
         end
