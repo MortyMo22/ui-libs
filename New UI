@@ -824,6 +824,7 @@ end
                 local value = cfg.default or min
                 local suffix = cfg.suffix or ""
                 local showPercent = cfg.showPercent or false
+				local showReset = (cfg.showReset ~= false) -- по умолчанию true, если хочешь скрыть: передай showReset = false
 
                 local container = create("Frame", {
                     Size = UDim2.new(1, 0, 0, 72),
@@ -857,29 +858,33 @@ end
                 addCorner(fill, 8)
                 fill.Parent = bar
 
-                -- создаём кнопку Reset как раньше
-local resetBtn = create("TextButton", {
-    Size = UDim2.new(0, 64, 0, 20),
-    BackgroundColor3 = Theme.control,
-    Text = "Reset",
-    TextColor3 = Theme.text,
-    Font = FONT_B,
-    TextSize = 12,
-}, {})
-addCorner(resetBtn, 6)
-withHover(resetBtn, Theme.control, Theme.hover)
+if showReset then
+    local resetBtn = create("TextButton", {
+        Size = UDim2.new(0, 64, 0, 20),
+        BackgroundColor3 = Theme.control,
+        Text = "Reset",
+        TextColor3 = Theme.text,
+        Font = FONT_B,
+        TextSize = 12,
+    }, {})
+    addCorner(resetBtn, 6)
+    withHover(resetBtn, Theme.control, Theme.hover)
 
--- создаём отдельную строку под слайдером для кнопки Reset
-local actionsRow = create("Frame", {
-    Size = UDim2.new(1, 0, 0, 24),
-    Position = UDim2.new(0, 0, 0, 46), -- ниже бара
-    BackgroundTransparency = 1,
-}, {})
-actionsRow.Parent = container
+    local actionsRow = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 24),
+        Position = UDim2.new(0, 0, 0, 46),
+        BackgroundTransparency = 1,
+    }, {})
+    actionsRow.Parent = container
 
--- теперь кнопка живёт в actionsRow
-resetBtn.Parent = actionsRow
-resetBtn.Position = UDim2.new(1, -68, 0, 2)
+    resetBtn.Parent = actionsRow
+    resetBtn.Position = UDim2.new(1, -68, 0, 2)
+
+    resetBtn.MouseButton1Click:Connect(function()
+        set(cfg.default or min) -- вернёт именно к default, а не в 0%
+    end)
+end
+
 
 
 local function set(v)
@@ -965,13 +970,12 @@ function sectionAPI:DropDown(text, options, default, callback)
     local function open()
         if openPopup then closePopup() end
 
-        -- оверлей для клика вне попапа
         local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
         local clickOverlay = create("TextButton", {
             Size = UDim2.fromScale(1,1),
             BackgroundTransparency = 1,
             Text = "",
-            ZIndex = 49,
+            ZIndex = 100, -- выше всего
         }, {})
         clickOverlay.Parent = rootGui
 
@@ -979,7 +983,7 @@ function sectionAPI:DropDown(text, options, default, callback)
             Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
             Position = UDim2.new(0, 0, 0, 54),
             BackgroundColor3 = Theme.panel2,
-            ZIndex = 50,
+            ZIndex = 101, -- поверх
             ClipsDescendants = true,
         }, {})
         addCorner(popup, 8)
@@ -991,7 +995,7 @@ function sectionAPI:DropDown(text, options, default, callback)
             BackgroundTransparency = 1,
             ScrollBarThickness = 6,
             CanvasSize = UDim2.new(0, 0, 0, #options * 26),
-            ZIndex = 51,
+            ZIndex = 102,
         }, {})
         scroll.Parent = popup
 
@@ -1008,7 +1012,7 @@ function sectionAPI:DropDown(text, options, default, callback)
                 TextColor3 = Theme.text,
                 Font = FONT,
                 TextSize = 14,
-                ZIndex = 52,
+                ZIndex = 103,
             }, {})
             addCorner(item, 6)
             item.Parent = scroll
@@ -1022,13 +1026,11 @@ function sectionAPI:DropDown(text, options, default, callback)
             end)
         end
 
-        -- клик вне — закрыть
         clickOverlay.MouseButton1Click:Connect(function()
             closePopup()
             if clickOverlay then clickOverlay:Destroy() end
         end)
 
-        -- при открытии другого попапа — закрыть
         openPopup = popup
     end
 
@@ -1102,7 +1104,7 @@ function sectionAPI:List(text, options, callback)
             Size = UDim2.fromScale(1,1),
             BackgroundTransparency = 1,
             Text = "",
-            ZIndex = 49,
+            ZIndex = 100,
         }, {})
         clickOverlay.Parent = rootGui
 
@@ -1110,7 +1112,7 @@ function sectionAPI:List(text, options, callback)
             Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
             Position = UDim2.new(0, 0, 0, 54),
             BackgroundColor3 = Theme.panel2,
-            ZIndex = 50,
+            ZIndex = 101,
             ClipsDescendants = true,
         }, {})
         addCorner(popup, 8)
@@ -1122,7 +1124,7 @@ function sectionAPI:List(text, options, callback)
             BackgroundTransparency = 1,
             ScrollBarThickness = 6,
             CanvasSize = UDim2.new(0, 0, 0, #options * 26),
-            ZIndex = 51,
+            ZIndex = 102,
         }, {})
         scroll.Parent = popup
 
@@ -1139,7 +1141,7 @@ function sectionAPI:List(text, options, callback)
                 TextColor3 = Theme.text,
                 Font = FONT,
                 TextSize = 14,
-                ZIndex = 52,
+                ZIndex = 103,
             }, {})
             addCorner(item, 6)
             item.Parent = scroll
