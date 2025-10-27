@@ -1261,18 +1261,19 @@ function sectionAPI:TextBind(labelText, initKey, callback)
 end
 
 function sectionAPI:ToggleColor(text, defaultState, defaultColor, callback)
-    local row = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 34),
-        BackgroundTransparency = 1,
-    }, {})
-    row.Parent = stack
-	
-	-- добавить небольшой верхний отступ, чтобы не прилипать к заголовку under section
+-- добавить небольшой верхний отступ, чтобы не прилипать к заголовку under section
 local spacer = create("Frame", {
     Size = UDim2.new(1, 0, 0, 8), -- можно 6..12 по вкусу
     BackgroundTransparency = 1,
 }, {})
 spacer.Parent = stack
+
+
+    local row = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
+    }, {})
+    row.Parent = stack
 
 
     -- инлайновый toggle в этом же ряду
@@ -1345,19 +1346,19 @@ spacer.Parent = stack
 end
 
 function sectionAPI:ToggleDualColor(text, defaultState, c1, c2, callback)
-    local row = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 34),
-        BackgroundTransparency = 1,
-    }, {})
-    row.Parent = stack
-	
-	-- добавить небольшой верхний отступ, чтобы не прилипать к заголовку under section
+-- добавить небольшой верхний отступ, чтобы не прилипать к заголовку under section
 local spacer = create("Frame", {
     Size = UDim2.new(1, 0, 0, 8), -- можно 6..12 по вкусу
     BackgroundTransparency = 1,
 }, {})
 spacer.Parent = stack
 
+
+    local row = create("Frame", {
+        Size = UDim2.new(1, 0, 0, 34),
+        BackgroundTransparency = 1,
+    }, {})
+    row.Parent = stack
 
     -- инлайновый toggle
     local state = defaultState or false
