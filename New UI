@@ -1263,7 +1263,7 @@ end
 function sectionAPI:ToggleColor(text, defaultState, defaultColor, callback)
 -- добавить небольшой верхний отступ, чтобы не прилипать к заголовку under section
 local spacer = create("Frame", {
-    Size = UDim2.new(1, 0, 0, 8), -- можно 6..12 по вкусу
+    Size = UDim2.new(1, 0, 0, 12), -- можно 6..12 по вкусу
     BackgroundTransparency = 1,
 }, {})
 spacer.Parent = stack
@@ -1348,7 +1348,7 @@ end
 function sectionAPI:ToggleDualColor(text, defaultState, c1, c2, callback)
 -- добавить небольшой верхний отступ, чтобы не прилипать к заголовку under section
 local spacer = create("Frame", {
-    Size = UDim2.new(1, 0, 0, 8), -- можно 6..12 по вкусу
+    Size = UDim2.new(1, 0, 0, 12), -- можно 6..12 по вкусу
     BackgroundTransparency = 1,
 }, {})
 spacer.Parent = stack
