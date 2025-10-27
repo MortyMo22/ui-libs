@@ -968,31 +968,30 @@ function sectionAPI:DropDown(text, options, default, callback)
         if openPopup then closePopup() end
 
         local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
-        local clickOverlay = create("TextButton", {
+        local overlay = create("TextButton", {
             Size = UDim2.fromScale(1,1),
             BackgroundTransparency = 1,
             Text = "",
-            ZIndex = 100, -- выше всего
+            ZIndex = 200,
         }, {})
-        clickOverlay.Parent = rootGui
+        overlay.Parent = rootGui
 
         local popup = create("Frame", {
-            Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
-            Position = UDim2.new(0, 0, 0, 54),
+            Size = UDim2.new(0, btn.AbsoluteSize.X, 0, math.min(#options * 26, 150)),
+            Position = UDim2.new(0, btn.AbsolutePosition.X, 0, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y),
             BackgroundColor3 = Theme.panel2,
-            ZIndex = 101, -- поверх
-            ClipsDescendants = true,
+            ZIndex = 201,
         }, {})
         addCorner(popup, 8)
         addStroke(popup, Theme.stroke, 1, 0.5)
-        popup.Parent = container
+        popup.Parent = rootGui
 
         local scroll = create("ScrollingFrame", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             ScrollBarThickness = 6,
             CanvasSize = UDim2.new(0, 0, 0, #options * 26),
-            ZIndex = 102,
+            ZIndex = 202,
         }, {})
         scroll.Parent = popup
 
@@ -1003,13 +1002,12 @@ function sectionAPI:DropDown(text, options, default, callback)
         for _, opt in ipairs(options) do
             local item = create("TextButton", {
                 Size = UDim2.new(1, -8, 0, 24),
-                Position = UDim2.new(0, 4, 0, 0),
                 BackgroundColor3 = Theme.control,
                 Text = tostring(opt),
                 TextColor3 = Theme.text,
                 Font = FONT,
                 TextSize = 14,
-                ZIndex = 103,
+                ZIndex = 203,
             }, {})
             addCorner(item, 6)
             item.Parent = scroll
@@ -1018,14 +1016,16 @@ function sectionAPI:DropDown(text, options, default, callback)
                 current = opt
                 btn.Text = tostring(current)
                 if callback then callback(current) end
-                closePopup()
-                if clickOverlay then clickOverlay:Destroy() end
+                overlay:Destroy()
+                popup:Destroy()
+                openPopup = nil
             end)
         end
 
-        clickOverlay.MouseButton1Click:Connect(function()
-            closePopup()
-            if clickOverlay then clickOverlay:Destroy() end
+        overlay.MouseButton1Click:Connect(function()
+            overlay:Destroy()
+            popup:Destroy()
+            openPopup = nil
         end)
 
         openPopup = popup
@@ -1033,7 +1033,8 @@ function sectionAPI:DropDown(text, options, default, callback)
 
     btn.MouseButton1Click:Connect(function()
         if openPopup then
-            closePopup()
+            openPopup:Destroy()
+            openPopup = nil
         else
             open()
         end
@@ -1097,31 +1098,30 @@ function sectionAPI:List(text, options, callback)
         if openPopup then closePopup() end
 
         local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
-        local clickOverlay = create("TextButton", {
+        local overlay = create("TextButton", {
             Size = UDim2.fromScale(1,1),
             BackgroundTransparency = 1,
             Text = "",
-            ZIndex = 100,
+            ZIndex = 200,
         }, {})
-        clickOverlay.Parent = rootGui
+        overlay.Parent = rootGui
 
         local popup = create("Frame", {
-            Size = UDim2.new(1, 0, 0, math.min(#options * 26, 150)),
-            Position = UDim2.new(0, 0, 0, 54),
+            Size = UDim2.new(0, btn.AbsoluteSize.X, 0, math.min(#options * 26, 150)),
+            Position = UDim2.new(0, btn.AbsolutePosition.X, 0, btn.AbsolutePosition.Y + btn.AbsoluteSize.Y),
             BackgroundColor3 = Theme.panel2,
-            ZIndex = 101,
-            ClipsDescendants = true,
+            ZIndex = 201,
         }, {})
         addCorner(popup, 8)
         addStroke(popup, Theme.stroke, 1, 0.5)
-        popup.Parent = container
+        popup.Parent = rootGui
 
         local scroll = create("ScrollingFrame", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
             ScrollBarThickness = 6,
             CanvasSize = UDim2.new(0, 0, 0, #options * 26),
-            ZIndex = 102,
+            ZIndex = 202,
         }, {})
         scroll.Parent = popup
 
@@ -1132,13 +1132,12 @@ function sectionAPI:List(text, options, callback)
         for _, name in ipairs(options) do
             local item = create("TextButton", {
                 Size = UDim2.new(1, -8, 0, 24),
-                Position = UDim2.new(0, 4, 0, 0),
                 BackgroundColor3 = Theme.control,
                 Text = name,
                 TextColor3 = Theme.text,
                 Font = FONT,
                 TextSize = 14,
-                ZIndex = 103,
+                ZIndex = 203,
             }, {})
             addCorner(item, 6)
             item.Parent = scroll
@@ -1151,9 +1150,10 @@ function sectionAPI:List(text, options, callback)
             end)
         end
 
-        clickOverlay.MouseButton1Click:Connect(function()
-            closePopup()
-            if clickOverlay then clickOverlay:Destroy() end
+        overlay.MouseButton1Click:Connect(function()
+            overlay:Destroy()
+            popup:Destroy()
+            openPopup = nil
         end)
 
         openPopup = popup
@@ -1161,7 +1161,8 @@ function sectionAPI:List(text, options, callback)
 
     btn.MouseButton1Click:Connect(function()
         if openPopup then
-            closePopup()
+            openPopup:Destroy()
+            openPopup = nil
         else
             open()
         end
