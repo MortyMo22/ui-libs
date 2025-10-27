@@ -1267,73 +1267,113 @@ function sectionAPI:ToggleColor(text, defaultState, defaultColor, callback)
     }, {})
     row.Parent = stack
 
-    -- создаём тумблер без Callback
-    local toggleAPI = sectionAPI:Toggle(text, { Default = defaultState })
+    -- инлайновый toggle в этом же ряду
+    local state = defaultState or false
+    local box = create("TextButton", {
+        Size = UDim2.new(0, 28, 0, 28),
+        Position = UDim2.new(0, 0, 0, 3),
+        BackgroundColor3 = state and Theme.accent or Theme.control,
+        Text = "",
+    }, {})
+    addCorner(box, 6)
+    addStroke(box, Theme.stroke, 1, 0.5)
+    box.Parent = row
 
-    -- кнопка цвета
+    local lbl = create("TextLabel", {
+        Size = UDim2.new(1, -36-36, 1, 0), -- оставим место под кнопку цвета справа
+        Position = UDim2.new(0, 36, 0, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.text,
+        Font = FONT,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, {})
+    lbl.Parent = row
+
+    -- кнопка цвета справа в том же ряду
     local colorBtn = create("TextButton", {
         Size = UDim2.new(0, 28, 0, 28),
+        Position = UDim2.new(1, -32, 0, 3),
         BackgroundColor3 = defaultColor or Theme.accent,
         Text = "",
-        Position = UDim2.new(1, -32, 0, 3),
+        ZIndex = 5,
     }, {})
     addCorner(colorBtn, 6)
     addStroke(colorBtn, Theme.stroke, 1, 0.5)
     colorBtn.Parent = row
 
-    -- локальная обёртка оповещения
-    local function notify()
-        if callback then
-            callback(toggleAPI.Get(), colorBtn.BackgroundColor3)
-        end
+    local function setToggle(newState)
+        state = newState
+        box.BackgroundColor3 = state and Theme.accent or Theme.control
+        if callback then callback(state, colorBtn.BackgroundColor3) end
     end
 
-    -- клики по тумблеру
-    -- переиспользуем его API
-    -- оборачиваем Set, чтобы уведомлять
-    local oldSet = toggleAPI.Set
-    toggleAPI.Set = function(state)
-        oldSet(state)
-        notify()
-    end
+    box.MouseButton1Click:Connect(function()
+        setToggle(not state)
+    end)
 
     colorBtn.MouseButton1Click:Connect(function()
         local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
         createColorPickerPopup(rootGui, colorBtn.BackgroundColor3, function(newColor)
             colorBtn.BackgroundColor3 = newColor
-            notify()
+            if callback then callback(state, colorBtn.BackgroundColor3) end
         end)
     end)
 
-    -- начальное уведомление (если нужно)
-    notify()
+    -- начальное уведомление
+    if callback then callback(state, colorBtn.BackgroundColor3) end
 
     return {
-        Set = function(state, color)
-            toggleAPI.Set(state)
-            if color then colorBtn.BackgroundColor3 = color end
-            notify()
+        Set = function(s, c)
+            setToggle(s)
+            if c then colorBtn.BackgroundColor3 = c end
+            if callback then callback(state, colorBtn.BackgroundColor3) end
         end,
         Get = function()
-            return toggleAPI.Get(), colorBtn.BackgroundColor3
+            return state, colorBtn.BackgroundColor3
         end
     }
 end
 
-            function sectionAPI:ToggleDualColor(text, defaultState, c1, c2, callback)
+function sectionAPI:ToggleDualColor(text, defaultState, c1, c2, callback)
     local row = create("Frame", {
         Size = UDim2.new(1, 0, 0, 34),
         BackgroundTransparency = 1,
     }, {})
     row.Parent = stack
 
-    local toggleAPI = sectionAPI:Toggle(text, { Default = defaultState })
+    -- инлайновый toggle
+    local state = defaultState or false
+    local box = create("TextButton", {
+        Size = UDim2.new(0, 28, 0, 28),
+        Position = UDim2.new(0, 0, 0, 3),
+        BackgroundColor3 = state and Theme.accent or Theme.control,
+        Text = "",
+    }, {})
+    addCorner(box, 6)
+    addStroke(box, Theme.stroke, 1, 0.5)
+    box.Parent = row
 
+    local lbl = create("TextLabel", {
+        Size = UDim2.new(1, -36-68, 1, 0), -- оставим место под две кнопки справа
+        Position = UDim2.new(0, 36, 0, 0),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Theme.text,
+        Font = FONT,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, {})
+    lbl.Parent = row
+
+    -- две кнопки цвета справа, в том же ряду
     local btn1 = create("TextButton", {
         Size = UDim2.new(0, 28, 0, 28),
+        Position = UDim2.new(1, -64, 0, 3),
         BackgroundColor3 = c1 or Theme.accent,
         Text = "",
-        Position = UDim2.new(1, -64, 0, 3),
+        ZIndex = 5,
     }, {})
     addCorner(btn1, 6)
     addStroke(btn1, Theme.stroke, 1, 0.5)
@@ -1341,9 +1381,10 @@ end
 
     local btn2 = create("TextButton", {
         Size = UDim2.new(0, 28, 0, 28),
+        Position = UDim2.new(1, -32, 0, 3),
         BackgroundColor3 = c2 or Theme.good,
         Text = "",
-        Position = UDim2.new(1, -32, 0, 3),
+        ZIndex = 5,
     }, {})
     addCorner(btn2, 6)
     addStroke(btn2, Theme.stroke, 1, 0.5)
@@ -1351,15 +1392,19 @@ end
 
     local function notify()
         if callback then
-            callback(toggleAPI.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3)
+            callback(state, btn1.BackgroundColor3, btn2.BackgroundColor3)
         end
     end
 
-    local oldSet = toggleAPI.Set
-    toggleAPI.Set = function(state)
-        oldSet(state)
+    local function setToggle(newState)
+        state = newState
+        box.BackgroundColor3 = state and Theme.accent or Theme.control
         notify()
     end
+
+    box.MouseButton1Click:Connect(function()
+        setToggle(not state)
+    end)
 
     local function openPicker(btn)
         local rootGui = stack:FindFirstAncestorOfClass("ScreenGui")
@@ -1375,14 +1420,14 @@ end
     notify()
 
     return {
-        Set = function(state, nc1, nc2)
-            toggleAPI.Set(state)
+        Set = function(s, nc1, nc2)
+            setToggle(s)
             if nc1 then btn1.BackgroundColor3 = nc1 end
             if nc2 then btn2.BackgroundColor3 = nc2 end
             notify()
         end,
         Get = function()
-            return toggleAPI.Get(), btn1.BackgroundColor3, btn2.BackgroundColor3
+            return state, btn1.BackgroundColor3, btn2.BackgroundColor3
         end
     }
 end
