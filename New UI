@@ -881,7 +881,7 @@ if showReset then
     resetBtn.Position = UDim2.new(1, -68, 0, 2)
 
     resetBtn.MouseButton1Click:Connect(function()
-        set(cfg.default or min) -- вернёт именно к default, а не в 0%
+        set(cfg.default or min)
     end)
 end
 
@@ -921,9 +921,7 @@ end
                     end
                 end)
 
-                resetBtn.MouseButton1Click:Connect(function()
-                    set(cfg.default or min)
-                end)
+              
 
                 return {
                     Set = set,
