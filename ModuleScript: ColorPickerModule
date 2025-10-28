@@ -1,0 +1,356 @@
+-- ColorPickerModule.lua
+-- Minimal standalone module adapted from your provided ColorPicker code.
+-- Important: this Module expects a child named "Main" (Frame) inside the ModuleScript —
+-- see step 3 how to create/insert that GUI template.
+
+local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local ColorPicker = {}
+ColorPicker.__index = ColorPicker
+
+local function clamp(n, a, b) return math.clamp(n, a, b) end
+
+local function updateColor(self, arg1, arg2, arg3)
+    if typeof(arg1) == "Color3" then
+        self.hue, self.sat, self.val = arg1:ToHSV()
+        self.currentColor = arg1
+    elseif arg1 and arg2 and arg3 then
+        self.hue = arg1
+        self.sat = arg2
+        self.val = arg3
+        self.currentColor = Color3.fromHSV(self.hue, self.sat, self.val)
+    end
+
+    if self.previewColor then
+        self.previewColor.BackgroundColor3 = self.currentColor
+    end
+
+    local function updateTextBoxNumber(textBox, value, multiplier)
+        if not textBox then return end
+        if typeof(value) == "number" and multiplier then
+            textBox.Text = tostring(math.round(value * multiplier))
+            textBox.PlaceholderText = textBox.Text
+        else
+            textBox.Text = tostring(value)
+            textBox.PlaceholderText = tostring(value)
+        end
+    end
+
+    if self.textBoxNumber then
+        updateTextBoxNumber(self.textBoxNumber.Hue, self.hue, 359)
+        updateTextBoxNumber(self.textBoxNumber.Saturation, self.sat, 255)
+        updateTextBoxNumber(self.textBoxNumber.Value, self.val, 255)
+        updateTextBoxNumber(self.textBoxNumber.Red, self.currentColor.R, 255)
+        updateTextBoxNumber(self.textBoxNumber.Green, self.currentColor.G, 255)
+        updateTextBoxNumber(self.textBoxNumber.Blue, self.currentColor.B, 255)
+        if self.textBoxNumber.HTML then
+            updateTextBoxNumber(self.textBoxNumber.HTML, self.currentColor:ToHex())
+        end
+    end
+
+    if self.valUiGradient then
+        self.valUiGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.new(0,0,0)),
+            ColorSequenceKeypoint.new(1, Color3.fromHSV(self.hue, self.sat, 1))
+        })
+    end
+
+    if self.valueCursor then
+        self.valueCursor.Position = UDim2.fromScale(0, 1 - self.val)
+    end
+    if self.colorCursor then
+        self.colorCursor.Position = UDim2.fromScale(1 - self.hue, 1 - self.sat)
+    end
+
+    self._Changed:Fire(self.currentColor)
+end
+
+local function cancelEyeDropper(self)
+    self.isUsingEyeDropper = false
+    if self.eyeDropbutton then
+        self.eyeDropbutton.BackgroundColor3 = Color3.fromRGB(50,50,50)
+        self.eyeDropbutton.Text = "Eye drop"
+    end
+    if self.okButton then
+        self.okButton.AutoButtonColor = true
+        self.okButton.TextTransparency = 0
+    end
+    if self.cancelButton then
+        self.cancelButton.AutoButtonColor = true
+        self.cancelButton.TextTransparency = 0
+    end
+end
+
+local function cancelColorPicker(self)
+    cancelEyeDropper(self)
+    if self.frame then self.frame.Visible = false end
+    self.active = false
+    self.currentColor = self.startColor
+    updateColor(self, self.startColor)
+    self._Changed:Fire(self.startColor)
+    self._Closed:Fire(true)
+    self.startColor = nil
+end
+
+local function startEyeDrop(self)
+    self.isUsingEyeDropper = true
+    if self.eyeDropbutton then
+        self.eyeDropbutton.BackgroundColor3 = Color3.new(1,0.25,0.25)
+        self.eyeDropbutton.Text = "Cancel"
+    end
+    if self.okButton then
+        self.okButton.AutoButtonColor = false
+        self.okButton.TextTransparency = 0.5
+    end
+    if self.cancelButton then
+        self.cancelButton.AutoButtonColor = false
+        self.cancelButton.TextTransparency = 0.5
+    end
+
+    spawn(function()
+        while self.isUsingEyeDropper do
+            local mousePos = UserInputService:GetMouseLocation()
+            local guiElements = playerGui:GetGuiObjectsAtPosition(mousePos.X, mousePos.Y - GuiService.TopbarInset.Height)
+            local validGuiElement
+            if guiElements[1] then
+                for _, guiElement in ipairs(guiElements) do
+                    if guiElement.BackgroundTransparency ~= 1 then
+                        validGuiElement = guiElement
+                        break
+                    end
+                end
+            end
+
+            local color
+            if validGuiElement then
+                color = validGuiElement.BackgroundColor3
+                updateColor(self, color)
+            else
+                local ray = workspace.CurrentCamera:ScreenPointToRay(mousePos.X, mousePos.Y - GuiService.TopbarInset.Height)
+                local result = Workspace:Raycast(ray.Origin, ray.Direction * 500)
+                if result and result.Instance and result.Instance.Color then
+                    color = result.Instance.Color
+                    updateColor(self, color)
+                else
+                    updateColor(self, Color3.new(0,0,0))
+                end
+            end
+
+            if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and guiElements[1] ~= self.eyeDropbutton then
+                local input = UserInputService.InputEnded:Wait()
+                while input.UserInputType ~= Enum.UserInputType.MouseButton1 do
+                    input = UserInputService.InputEnded:Wait()
+                end
+                cancelEyeDropper(self)
+            end
+            task.wait()
+        end
+    end)
+end
+
+local function ProcessText(enterPressed, number)
+    local newNumber = tonumber(number)
+    if not newNumber then return nil end
+    return newNumber
+end
+
+local function connectEvents(self)
+    local function Update()
+        local absoluteColorPos = self.colorButton.AbsolutePosition
+        local absoluteColorSize = self.colorButton.AbsoluteSize
+        self.min_x = absoluteColorPos.X
+        self.max_x = absoluteColorPos.X + absoluteColorSize.X
+        self.min_y = absoluteColorPos.Y + GuiService.TopbarInset.Height
+        self.max_y = absoluteColorPos.Y + absoluteColorSize.Y + GuiService.TopbarInset.Height
+    end
+
+    self.colorButton:GetPropertyChangedSignal("AbsolutePosition"):Connect(Update)
+    self.colorButton:GetPropertyChangedSignal("AbsoluteSize"):Connect(Update)
+    GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(Update)
+
+    self.colorButton.MouseButton1Down:Connect(function()
+        while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and self.active do
+            local mousePos = UserInputService:GetMouseLocation()
+            local percent_x = 1 - math.clamp((mousePos.X - self.min_x) / (self.max_x - self.min_x), 0, 1)
+            local percent_y = 1 - math.clamp((mousePos.Y - self.min_y) / (self.max_y - self.min_y), 0, 1)
+            self.hue = percent_x
+            self.sat = percent_y
+            updateColor(self, self.hue, self.sat, self.val)
+            task.wait()
+        end
+    end)
+
+    local function dragValue()
+        while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) and self.active do
+            local mousePos = UserInputService:GetMouseLocation()
+            local percent = 1 - math.clamp((mousePos.Y - self.min_y) / (self.max_y - self.min_y), 0, 1)
+            self.val = percent
+            updateColor(self, self.hue, self.sat, self.val)
+            task.wait()
+        end
+    end
+
+    self.valueButton.MouseButton1Down:Connect(dragValue)
+    self.valueCursor.TextButton.MouseButton1Down:Connect(dragValue)
+
+    self.eyeDropbutton.Activated:Connect(function()
+        if self.isUsingEyeDropper then
+            cancelEyeDropper(self)
+        else
+            startEyeDrop(self)
+        end
+    end)
+
+    self.okButton.Activated:Connect(function()
+        if self.isUsingEyeDropper then return end
+        if self.frame then self.frame.Visible = false end
+        self.active = false
+        self._Closed:Fire(false)
+    end)
+
+    self.cancelButton.Activated:Connect(function()
+        if self.isUsingEyeDropper then return end
+        cancelColorPicker(self)
+    end)
+
+    self.textBoxNumber.Red.FocusLost:Connect(function(enterPressed)
+        local r = ProcessText(enterPressed, self.textBoxNumber.Red.Text)
+        if not r then updateColor(self, self.currentColor); return end
+        r = clamp(r, 0, 255) / 255
+        local g, b = self.currentColor.G, self.currentColor.B
+        updateColor(self, Color3.new(r, g, b))
+    end)
+
+    self.textBoxNumber.Green.FocusLost:Connect(function(enterPressed)
+        local g = ProcessText(enterPressed, self.textBoxNumber.Green.Text)
+        if not g then updateColor(self, self.currentColor); return end
+        g = clamp(g, 0, 255) / 255
+        local r, b = self.currentColor.R, self.currentColor.B
+        updateColor(self, Color3.new(r, g, b))
+    end)
+
+    self.textBoxNumber.Blue.FocusLost:Connect(function(enterPressed)
+        local b = ProcessText(enterPressed, self.textBoxNumber.Blue.Text)
+        if not b then updateColor(self, self.currentColor); return end
+        b = clamp(b, 0, 255) / 255
+        local r, g = self.currentColor.R, self.currentColor.G
+        updateColor(self, Color3.new(r, g, b))
+    end)
+
+    self.textBoxNumber.Hue.FocusLost:Connect(function(enterPressed)
+        local hue = ProcessText(enterPressed, self.textBoxNumber.Hue.Text)
+        if not hue then updateColor(self, self.currentColor); return end
+        self.hue = clamp(hue, 0, 359) / 359
+        updateColor(self, self.hue, self.sat, self.val)
+    end)
+
+    self.textBoxNumber.Saturation.FocusLost:Connect(function(enterPressed)
+        local sat = ProcessText(enterPressed, self.textBoxNumber.Saturation.Text)
+        if not sat then updateColor(self, self.currentColor); return end
+        self.sat = clamp(sat, 0, 255) / 255
+        updateColor(self, self.hue, self.sat, self.val)
+    end)
+
+    self.textBoxNumber.Value.FocusLost:Connect(function(enterPressed)
+        local val = ProcessText(enterPressed, self.textBoxNumber.Value.Text)
+        if not val then updateColor(self, self.currentColor); return end
+        self.val = clamp(val, 0, 255) / 255
+        updateColor(self, self.hue, self.sat, self.val)
+    end)
+
+    self.textBoxNumber.HTML.FocusLost:Connect(function()
+        local success, result = pcall(function()
+            return Color3.fromHex(self.textBoxNumber.HTML.Text)
+        end)
+        if success then
+            updateColor(self, result)
+        else
+            updateColor(self, self.currentColor)
+        end
+    end)
+end
+
+function ColorPicker.new()
+    local self = setmetatable({}, ColorPicker)
+    self.startColor = nil
+    self.currentColor = Color3.new(1,1,1)
+    self.active = false
+    self.isUsingEyeDropper = false
+
+    self._Opened = Instance.new("BindableEvent")
+    self._Closed = Instance.new("BindableEvent")
+    self._Changed = Instance.new("BindableEvent")
+
+    self.Opened = self._Opened.Event
+    self.Closed = self._Closed.Event
+    self.Changed = self._Changed.Event
+
+    self.hue, self.sat, self.val = self.currentColor:ToHSV()
+
+    if not script:FindFirstChild("Main") then
+        error("ColorPickerModule requires a 'Main' UI template as a child of the ModuleScript", 2)
+    end
+
+    self.frame = script.Main:Clone()
+    self.frame.Name = tostring(#playerGui:GetChildren()+1)
+    self.frame.Parent = playerGui
+    self.sliders = self.frame:WaitForChild("Sliders")
+    self.numeric = self.frame:WaitForChild("Numeric")
+
+    self.previewColor = self.numeric:WaitForChild("Preview")
+    self.eyeDropbutton = self.numeric:WaitForChild("EyeDrop")
+    self.okButton = self.numeric:WaitForChild("Ok")
+    self.cancelButton = self.numeric:WaitForChild("Cancel")
+    self.textBoxNumber = self.numeric:WaitForChild("TextBox")
+    self.colorButton = self.sliders:WaitForChild("Color"):WaitForChild("Button")
+    self.colorCursor = self.sliders:WaitForChild("Color"):WaitForChild("White"):WaitForChild("Cursor")
+    self.valueButton = self.sliders:WaitForChild("Value"):WaitForChild("Button")
+    self.valueCursor = self.sliders:WaitForChild("Value"):WaitForChild("Cursor")
+    self.valUiGradient = self.sliders:WaitForChild("Value"):WaitForChild("UIGradient")
+
+    updateColor(self, self.currentColor)
+    connectEvents(self)
+
+    return self
+end
+
+function ColorPicker:SetColor(color)
+    if not color then error("Argument 1 missing or nil", 2) end
+    if typeof(color) ~= "Color3" then error("Color3 expected got "..typeof(color), 2) end
+    self.hue, self.sat, self.val = color:ToHSV()
+    updateColor(self, self.hue, self.sat, self.val)
+end
+
+function ColorPicker:GetColor()
+    return self.currentColor
+end
+
+function ColorPicker:Start()
+    if self.active then return end
+    self.startColor = self.currentColor
+    if self.frame then self.frame.Visible = true end
+    self.active = true
+    self._Opened:Fire()
+end
+
+function ColorPicker:Cancel()
+    if not self.active then return end
+    cancelColorPicker(self)
+end
+
+function ColorPicker:Destroy()
+    self.active = false
+    self._Changed:Destroy()
+    self._Opened:Destroy()
+    self._Closed:Destroy()
+    if self.frame then self.frame:Destroy() end
+    setmetatable(self, nil)
+end
+
+return ColorPicker
