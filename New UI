@@ -78,329 +78,262 @@ local FONT_B = Enum.Font.GothamBold
 local RoundedUI = {}
 
 -- Internal: Color picker popup
-local function createColorPickerPopup(rootGui, startColor, onApply)
-    -- Use New UI helpers: Create, Interface, RGB/HSV, U2, V2, U1, Floor, Clamp, Concat, Upper, Format
-    -- Defensive require of globals already present in New UI file
-    local Color3FromRGB = RGB
-    local Color3FromHSV = HSV
-    local FloorLocal = Floor
-    local ClampLocal = Clamp
+local function createColorPickerPopup(rootGui, startColor, onApply, opts)
+    opts = type(opts) == "table" and opts or {}
+    local parent = rootGui or Interface.Base
+    local start = (typeof(startColor) == "Color3") and startColor or RGB(255,255,255)
+    local H, S, V = start:ToHSV()
+    if H == 0 then H = 1 end
+    local Alpha = (type(opts.alpha) == "number") and Clamp(opts.alpha, 0, 1) or nil
+
+    -- helpers from file
     local CreateLocal = Create
-    local InterfaceLocal = Interface
+    local HSVc = HSV
+    local RGBc = RGB
+    local FloorL = Floor
+    local ClampL = Clamp
+    local UpperL = Upper
+    local FormatL = Format
+    local ConcatL = Concat
 
-    -- state
-    local H, S, V = 0, 1, 1
-    if startColor and typeof(startColor) == "Color3" then
-        H, S, V = startColor:ToHSV()
-    end
-
-    -- helper to format colors
-    local function colorToHex(c)
-        return Upper(Format("#%02x%02x%02x", FloorLocal(c.R*255), FloorLocal(c.G*255), FloorLocal(c.B*255)))
-    end
-    local function colorToRgbText(c)
-        return Format("%d,%d,%d", FloorLocal(c.R*255), FloorLocal(c.G*255), FloorLocal(c.B*255))
-    end
-
-    -- create overlay + popup root (keeps same styling approach as New UI)
-    local overlay = CreateLocal("TextButton", {
+    -- overlay
+    local overlay = CreateLocal("Frame", {
         Name = "ColorPickerOverlay",
         Size = U2(1,0,1,0),
-        BackgroundColor3 = RGB(0,0,0),
-        BackgroundTransparency = 0.35,
-        Text = "",
-        ZIndex = 200,
-        Parent = rootGui or InterfaceLocal.Base
+        Position = U2(0,0,0,0),
+        BackgroundColor3 = RGBc(0,0,0),
+        BackgroundTransparency = 0.5,
+        ZIndex = 100,
+        Parent = parent
     })
 
+    -- close on outside click (use InputBegan on overlay)
+    Interface:Connect(overlay.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            -- if clicked outside popup, destroy overlay (we'll check below)
+            local mpos = input.Position
+            if popup then
+                local ppos = popup.AbsolutePosition
+                local psz = popup.AbsoluteSize
+                if not (mpos.X >= ppos.X and mpos.X <= ppos.X+psz.X and mpos.Y >= ppos.Y and mpos.Y <= ppos.Y+psz.Y) then
+                    Destroy(overlay)
+                end
+            else
+                Destroy(overlay)
+            end
+        end
+    end)
+
+    -- popup
     local popup = CreateLocal("Frame", {
-        Size = U2(0, 360, 0, 410),
-        Position = U2(0.5, -180, 0.5, -205),
-        BackgroundColor3 = Theme and Theme.panel or RGB(30,30,30),
-        ZIndex = 201,
+        Name = "ColorPickerPopup",
+        Size = U2(0, 300, 0, (Alpha and 330 or 310)),
+        Position = U2(0.5, -150, 0.5, -155),
+        AnchorPoint = V2(0.5,0.5),
+        BackgroundColor3 = RGBc(30,30,30),
+        BorderSizePixel = 0,
+        ZIndex = 101,
         Parent = overlay
     })
 
-    addCorner(popup, 10)
-    addStroke(popup, Theme and Theme.stroke or RGB(0,0,0), 1, 0.5)
-    addPadding(popup, 12)
-
     -- title
     CreateLocal("TextLabel", {
-        Size = U2(1,0,0,28),
+        Size = U2(1,0,0,26),
+        Position = U2(0,0,0,4),
         BackgroundTransparency = 1,
         Text = "Color Picker",
-        TextColor3 = Theme and Theme.text or RGB(255,255,255),
-        Font = FONT_B,
-        TextSize = 18,
-        ZIndex = 202,
-        TextXAlignment = Enum.TextXAlignment.Center,
+        TextColor3 = RGBc(255,255,255),
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
         Parent = popup
     })
 
-    -- sv area
-    local svFrame = CreateLocal("Frame", {
-        Size = U2(0, 280, 0, 280),
-        Position = U2(0, 0, 0, 40),
-        BackgroundColor3 = Color3FromHSV(H,1,1),
-        ZIndex = 203,
-        ClipsDescendants = true,
+    -- SV box
+    local svBox = CreateLocal("Frame", {
+        Size = U2(0, 240, 0, 240),
+        Position = U2(0, 8, 0, 36),
+        BackgroundColor3 = HSVc(H,1,1),
+        BorderSizePixel = 0,
         Parent = popup
     })
-    addStroke(svFrame, Theme and Theme.stroke or RGB(0,0,0), 1, 0.5)
 
-    local svBase = CreateLocal("Frame", {
-        Size = U2(1,0,1,0),
-        BackgroundColor3 = Color3FromHSV(H,1,1),
-        ZIndex = 203,
-        Parent = svFrame
-    })
-
-    -- white overlay gradient (left->transparent)
-    local whiteOverlay = CreateLocal("Frame", {Size = U2(1,0,1,0), BackgroundTransparency = 1, ZIndex = 204, Parent = svFrame})
-    local whiteGrad = Instance.new("UIGradient")
-    whiteGrad.Color = ColorSequence.new{ ColorSequenceKeypoint.new(0, RGB(1,1,1)), ColorSequenceKeypoint.new(1, RGB(1,1,1)) }
+    -- SV overlays: white (left->transparent) and black (top->transparent)
+    local white = CreateLocal("Frame", {Size = U2(1,0,1,0), BackgroundColor3 = RGBc(255,255,255), BackgroundTransparency = 1, Parent = svBox})
+    local whiteGrad = Instance.new("UIGradient"); whiteGrad.Rotation = 0; whiteGrad.Parent = white
     whiteGrad.Transparency = NumberSequence.new{ NumberSequenceKeypoint.new(0,0), NumberSequenceKeypoint.new(1,1) }
-    whiteGrad.Rotation = 0
-    whiteGrad.Parent = whiteOverlay
 
-    -- black overlay gradient (top->transparent)
-    local blackOverlay = CreateLocal("Frame", {Size = U2(1,0,1,0), BackgroundTransparency = 1, ZIndex = 205, Parent = svFrame})
-    local blackGrad = Instance.new("UIGradient")
-    blackGrad.Color = ColorSequence.new{ ColorSequenceKeypoint.new(0, RGB(0,0,0)), ColorSequenceKeypoint.new(1, RGB(0,0,0)) }
+    local black = CreateLocal("Frame", {Size = U2(1,0,1,0), BackgroundColor3 = RGBc(0,0,0), BackgroundTransparency = 1, Parent = svBox})
+    local blackGrad = Instance.new("UIGradient"); blackGrad.Rotation = 90; blackGrad.Parent = black
     blackGrad.Transparency = NumberSequence.new{ NumberSequenceKeypoint.new(0,0), NumberSequenceKeypoint.new(1,1) }
-    blackGrad.Rotation = 90
-    blackGrad.Parent = blackOverlay
 
+    -- SV indicator
     local svIndicator = CreateLocal("Frame", {
         Size = U2(0,10,0,10),
-        BackgroundColor3 = RGB(255,255,255),
+        AnchorPoint = V2(0.5,0.5),
+        BackgroundColor3 = RGBc(255,255,255),
         BorderSizePixel = 0,
-        ZIndex = 206,
-        Parent = svFrame
+        Position = U2(S,0,1-V,0),
+        Parent = svBox
     })
-    addCorner(svIndicator,5)
 
-    -- hue bar
-    local hueFrame = CreateLocal("Frame", {
-        Size = U2(0, 24, 0, 280),
-        Position = U2(0, 290, 0, 40),
-        BackgroundColor3 = RGB(255,0,0),
-        ZIndex = 203,
+    -- Hue bar
+    local hueBar = CreateLocal("Frame", {
+        Size = U2(0, 18, 0, 240),
+        Position = U2(0, 250, 0, 36),
+        BackgroundColor3 = RGBc(255,0,0),
+        BorderSizePixel = 0,
         Parent = popup
     })
-    addStroke(hueFrame, Theme and Theme.stroke or RGB(0,0,0), 1, 0.5)
-
-    local hueGrad = Instance.new("UIGradient")
-    hueGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0.00, Color3FromHSV(0.00,1,1)),
-        ColorSequenceKeypoint.new(0.17, Color3FromHSV(0.17,1,1)),
-        ColorSequenceKeypoint.new(0.33, Color3FromHSV(0.33,1,1)),
-        ColorSequenceKeypoint.new(0.50, Color3FromHSV(0.50,1,1)),
-        ColorSequenceKeypoint.new(0.67, Color3FromHSV(0.67,1,1)),
-        ColorSequenceKeypoint.new(0.83, Color3FromHSV(0.83,1,1)),
-        ColorSequenceKeypoint.new(1.00, Color3FromHSV(1.00,1,1)),
-    }
-    hueGrad.Rotation = 90
-    hueGrad.Parent = hueFrame
+    local hueGrad = Instance.new("UIGradient"); hueGrad.Rotation = 90; hueGrad.Parent = hueBar
+    hueGrad.Color = NewCS({
+        NewCSK(0.00, HSVc(0.00,1,1)),
+        NewCSK(0.17, HSVc(0.17,1,1)),
+        NewCSK(0.33, HSVc(0.33,1,1)),
+        NewCSK(0.50, HSVc(0.50,1,1)),
+        NewCSK(0.67, HSVc(0.67,1,1)),
+        NewCSK(0.83, HSVc(0.83,1,1)),
+        NewCSK(1.00, HSVc(1.00,1,1))
+    })
 
     local hueIndicator = CreateLocal("Frame", {
         Size = U2(1,0,0,2),
-        BackgroundColor3 = RGB(255,255,255),
+        Position = U2(0,0,H,-1),
+        BackgroundColor3 = RGBc(255,255,255),
         BorderSizePixel = 0,
-        ZIndex = 206,
-        Parent = hueFrame
+        Parent = hueBar
     })
 
-    -- bottom container with preview, hex/rgb and buttons using UIListLayout to prevent overlaps
-    local bottomContainer = CreateLocal("Frame", {
-        Size = U2(1,0,0,120),
-        Position = U2(0,0,0,328),
-        BackgroundTransparency = 1,
-        ZIndex = 202,
-        Parent = popup
-    })
-    local bottomLayout = Instance.new("UIListLayout", bottomContainer)
-    bottomLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    bottomLayout.Padding = U1(0,8)
+    -- Preview and inputs
+    local preview = CreateLocal("Frame", {Size = U2(1,0,0,28), Position = U2(0,0,0,284), BackgroundColor3 = HSVc(H,S,V), Parent = popup})
+    local inputs = CreateLocal("Frame", {Size = U2(1,0,0,24), Position = U2(0,0,0,316), BackgroundTransparency = 1, Parent = popup})
+    CreateLocal("UIListLayout", {Parent = inputs, FillDirection = Enum.FillDirection.Horizontal, Padding = U1(0,6)})
 
-    local preview = CreateLocal("Frame", { Size = U2(1,0,0,30), BackgroundColor3 = Color3FromHSV(H,S,V), LayoutOrder = 1, ZIndex = 202, Parent = bottomContainer })
-    addCorner(preview,6)
-    addStroke(preview, Theme and Theme.stroke or RGB(0,0,0), 1, 0.5)
-
-    local inputRow = CreateLocal("Frame", { Size = U2(1,0,0,36), BackgroundTransparency = 1, LayoutOrder = 2, ZIndex = 202, Parent = bottomContainer })
-    local inputPadding = 8
     local hexBox = CreateLocal("TextBox", {
-        Size = U2(0.48, -inputPadding/2, 1, 0),
-        Position = U2(0,0,0,0),
-        BackgroundColor3 = Theme and Theme.panel2 or RGB(40,40,40),
-        TextColor3 = Theme and Theme.text or RGB(255,255,255),
-        Font = FONT,
-        TextSize = 14,
-        PlaceholderText = "#HEX",
-        ClearTextOnFocus = false,
-        ZIndex = 202,
-        Parent = inputRow
+        Size = U2(0.5, -6, 1, 0),
+        Text = UpperL(FormatL("#%02x%02x%02x", FloorL(start.R*255), FloorL(start.G*255), FloorL(start.B*255))),
+        BackgroundColor3 = RGBc(30,30,30),
+        TextColor3 = RGBc(255,255,255),
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        Parent = inputs
     })
-    addCorner(hexBox,6)
-    addStroke(hexBox, Theme and Theme.stroke or RGB(0,0,0), 1, 0.6)
-
     local rgbBox = CreateLocal("TextBox", {
-        Size = U2(0.48, -inputPadding/2, 1, 0),
-        Position = U2(0.52,0,0,0),
-        BackgroundColor3 = Theme and Theme.panel2 or RGB(40,40,40),
-        TextColor3 = Theme and Theme.text or RGB(255,255,255),
-        Font = FONT,
-        TextSize = 14,
-        PlaceholderText = "R,G,B",
-        ClearTextOnFocus = false,
-        ZIndex = 202,
-        Parent = inputRow
+        Size = U2(0.5, -6, 1, 0),
+        Text = FormatL("%d,%d,%d", FloorL(start.R*255), FloorL(start.G*255), FloorL(start.B*255)),
+        BackgroundColor3 = RGBc(30,30,30),
+        TextColor3 = RGBc(255,255,255),
+        Font = Enum.Font.Gotham,
+        TextSize = 13,
+        Parent = inputs
     })
-    addCorner(rgbBox,6)
-    addStroke(rgbBox, Theme and Theme.stroke or RGB(0,0,0), 1, 0.6)
 
-    local buttonsRow = CreateLocal("Frame", { Size = U2(1,0,0,36), BackgroundTransparency = 1, LayoutOrder = 3, ZIndex = 202, Parent = bottomContainer })
-    local applyBtn = CreateLocal("TextButton", {
-        Size = U2(0.48,0,1,0),
-        BackgroundColor3 = Theme and Theme.accent or RGB(120,70,255),
-        Text = "Apply",
-        TextColor3 = Theme and Theme.text or RGB(255,255,255),
-        Font = FONT_B,
-        TextSize = 16,
-        ZIndex = 203,
-        Parent = buttonsRow
-    })
-    addCorner(applyBtn,6)
-    withHover(applyBtn, Theme and Theme.accent or RGB(120,70,255), Theme and Theme.accentDim or RGB(100,60,200))
+    -- Apply / Cancel
+    local applyBtn = CreateLocal("TextButton", {Size = U2(0.5, -6, 0, 26), Text = "Apply", Parent = CreateLocal("Frame", {Parent = popup, Size = U2(1,0,0,30), Position = U2(0,0,0,344)})})
+    applyBtn.BackgroundColor3 = RGBc(120,70,255)
+    local cancelBtn = CreateLocal("TextButton", {Size = U2(0.5, -6, 0, 26), Text = "Cancel", Position = U2(0.5,6,0,0), Parent = applyBtn.Parent})
+    cancelBtn.BackgroundColor3 = RGBc(60,60,60)
 
-    local cancelBtn = CreateLocal("TextButton", {
-        Size = U2(0.48,0,1,0),
-        Position = U2(0.52,0,0,0),
-        BackgroundColor3 = Theme and Theme.control or RGB(60,60,60),
-        Text = "Cancel",
-        TextColor3 = Theme and Theme.text or RGB(255,255,255),
-        Font = FONT_B,
-        TextSize = 16,
-        ZIndex = 203,
-        Parent = buttonsRow
-    })
-    addCorner(cancelBtn,6)
-    withHover(cancelBtn, Theme and Theme.control or RGB(60,60,60), Theme and Theme.hover or RGB(80,80,80))
-
-    -- internal update function
-    local function updateAll()
-        preview.BackgroundColor3 = Color3FromHSV(H,S,V)
-        svBase.BackgroundColor3 = Color3FromHSV(H,1,1)
-        svIndicator.Position = U2(S, -5, 1-V, -5)
+    -- internal update
+    local function updateUI()
+        preview.BackgroundColor3 = HSVc(H,S,V)
+        svBox.BackgroundColor3 = HSVc(H,1,1)
+        svIndicator.Position = U2(S,0,1-V,0)
         hueIndicator.Position = U2(0,0,H,-1)
-        hexBox.Text = colorToHex(Color3FromHSV(H,S,V))
-        rgbBox.Text = colorToRgbText(Color3FromHSV(H,S,V))
+        hexBox.Text = UpperL(FormatL("#%02x%02x%02x", FloorL(HSVc(H,S,V).R*255), FloorL(HSVc(H,S,V).G*255), FloorL(HSVc(H,S,V).B*255)))
+        rgbBox.Text = FormatL("%d,%d,%d", FloorL(HSVc(H,S,V).R*255), FloorL(HSVc(H,S,V).G*255), FloorL(HSVc(H,S,V).B*255))
+        if Alpha and applyBtn then -- visual alpha not shown in this minimal inline version, but keep state
+            -- nothing visual for alpha here unless you add a bar
+        end
     end
 
-    updateAll()
+    updateUI()
 
     -- SV interactions
-    track = function(conn) end -- noop placeholder so editor doesn't error if not present
-
-    local svConn1, svConn2
-    svFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            local function doUpdate(pos)
-                local relX = ClampLocal((pos.X - svFrame.AbsolutePosition.X)/svFrame.AbsoluteSize.X, 0, 1)
-                local relY = ClampLocal((pos.Y - svFrame.AbsolutePosition.Y)/svFrame.AbsoluteSize.Y, 0, 1)
-                S = relX
-                V = 1 - relY
-                updateAll()
+    local svMovedConn, svEndConn
+    Interface:Connect(svBox.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local function doPos(pos)
+                local relX = ClampL((pos.X - svBox.AbsolutePosition.X) / svBox.AbsoluteSize.X, 0, 1)
+                local relY = ClampL((pos.Y - svBox.AbsolutePosition.Y) / svBox.AbsoluteSize.Y, 0, 1)
+                S = relX; V = 1 - relY
+                updateUI()
             end
-            doUpdate(input.Position)
-            svConn1 = InterfaceLocal:Connect(InputService.InputChanged, function(ch)
-                if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
-                    doUpdate(ch.Position)
-                end
+            doPos(input.Position)
+            svMovedConn = Interface:Connect(InputService.InputChanged, function(ch)
+                if ch.UserInputType == Enum.UserInputType.MouseMovement then doPos(ch.Position) end
             end)
-            svConn2 = InterfaceLocal:Connect(InputService.InputEnded, function(endInput)
-                if endInput.UserInputType == input.UserInputType then
-                    if svConn1 then Disconnect(svConn1) end
-                    if svConn2 then Disconnect(svConn2) end
+            svEndConn = Interface:Connect(InputService.InputEnded, function(e)
+                if e.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if svMovedConn then Disconnect(svMovedConn) svMovedConn = nil end
+                    if svEndConn then Disconnect(svEndConn) svEndConn = nil end
                 end
             end)
         end
     end)
 
     -- Hue interactions
-    hueFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            local function doUpdate(pos)
-                local relY = ClampLocal((pos.Y - hueFrame.AbsolutePosition.Y)/hueFrame.AbsoluteSize.Y, 0, 1)
+    local hueMovedConn, hueEndConn
+    Interface:Connect(hueBar.InputBegan, function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local function doPos(pos)
+                local relY = ClampL((pos.Y - hueBar.AbsolutePosition.Y) / hueBar.AbsoluteSize.Y, 0, 1)
                 H = relY
-                updateAll()
+                updateUI()
             end
-            doUpdate(input.Position)
-            local hConn1 = InterfaceLocal:Connect(InputService.InputChanged, function(ch)
-                if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
-                    doUpdate(ch.Position)
-                end
+            doPos(input.Position)
+            hueMovedConn = Interface:Connect(InputService.InputChanged, function(ch)
+                if ch.UserInputType == Enum.UserInputType.MouseMovement then doPos(ch.Position) end
             end)
-            local hConn2 = InterfaceLocal:Connect(InputService.InputEnded, function(endInput)
-                if endInput.UserInputType == input.UserInputType then
-                    if hConn1 then Disconnect(hConn1) end
-                    if hConn2 then Disconnect(hConn2) end
+            hueEndConn = Interface:Connect(InputService.InputEnded, function(e)
+                if e.UserInputType == Enum.UserInputType.MouseButton1 then
+                    if hueMovedConn then Disconnect(hueMovedConn) hueMovedConn = nil end
+                    if hueEndConn then Disconnect(hueEndConn) hueEndConn = nil end
                 end
             end)
         end
     end)
 
-    -- hex and rgb parsing
-    hexBox.FocusLost:Connect(function()
-        local t = tostring(hexBox.Text or ""):gsub("#","")
-        if #t == 6 then
-            local r = tonumber(t:sub(1,2),16) or 0
-            local g = tonumber(t:sub(3,4),16) or 0
-            local b = tonumber(t:sub(5,6),16) or 0
-            H,S,V = Color3FromRGB(r,g,b):ToHSV()
-            updateAll()
+    -- Hex focus lost
+    Interface:Connect(hexBox.FocusLost, function(enter)
+        local txt = tostring(hexBox.Text or ""):gsub("#","")
+        if #txt == 6 then
+            local r = tonumber(txt:sub(1,2),16) or 0
+            local g = tonumber(txt:sub(3,4),16) or 0
+            local b = tonumber(txt:sub(5,6),16) or 0
+            H,S,V = RGBc(r,g,b):ToHSV()
+            updateUI()
         else
-            hexBox.Text = colorToHex(Color3FromHSV(H,S,V))
+            hexBox.Text = UpperL(FormatL("#%02x%02x%02x", FloorL(HSVc(H,S,V).R*255), FloorL(HSVc(H,S,V).G*255), FloorL(HSVc(H,S,V).B*255)))
         end
     end)
 
-    rgbBox.FocusLost:Connect(function()
+    -- RGB focus lost
+    Interface:Connect(rgbBox.FocusLost, function(enter)
         local t = tostring(rgbBox.Text or "")
         local r,g,b = t:match("(%d+)%s*,%s*(%d+)%s*,%s*(%d+)")
         if r and g and b then
-            r = ClampLocal(tonumber(r),0,255) or 0
-            g = ClampLocal(tonumber(g),0,255) or 0
-            b = ClampLocal(tonumber(b),0,255) or 0
-            H,S,V = Color3FromRGB(r,g,b):ToHSV()
-            updateAll()
+            r = ClampL(tonumber(r),0,255); g = ClampL(tonumber(g),0,255); b = ClampL(tonumber(b),0,255)
+            H,S,V = RGBc(r,g,b):ToHSV()
+            updateUI()
         else
-            rgbBox.Text = colorToRgbText(Color3FromHSV(H,S,V))
+            rgbBox.Text = FormatL("%d,%d,%d", FloorL(HSVc(H,S,V).R*255), FloorL(HSVc(H,S,V).G*255), FloorL(HSVc(H,S,V).B*255))
         end
     end)
 
     -- Apply / Cancel
-    applyBtn.MouseButton1Click:Connect(function()
+    Interface:Connect(applyBtn.MouseButton1Click, function()
         if type(onApply) == "function" then
-            pcall(function() onApply(Color3FromHSV(H,S,V)) end)
+            local ok, err = pcall(function() onApply(HSVc(H,S,V), Alpha) end)
+            if not ok then warn("ColorPicker onApply error:", err) end
         end
-        overlay:Destroy()
+        Destroy(overlay)
     end)
 
-    cancelBtn.MouseButton1Click:Connect(function()
-        overlay:Destroy()
+    Interface:Connect(cancelBtn.MouseButton1Click, function()
+        Destroy(overlay)
     end)
 
-    -- close on click outside
-    overlay.MouseButton1Click:Connect(function()
-        local mouse = InputService:GetMouseLocation()
-        local pos = V2(mouse.X, mouse.Y)
-        local p0 = popup.AbsolutePosition
-        local ps = popup.AbsoluteSize
-        local inside = pos.X >= p0.X and pos.X <= p0.X + ps.X and pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
-        if not inside then overlay:Destroy() end
-    end)
-
+    -- cleanup on destroy: ensure disconnections removed automatically by Interface:Connect list in file when unloading
     return overlay
 end
 
