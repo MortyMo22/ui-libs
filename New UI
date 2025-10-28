@@ -214,167 +214,129 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     }, {})
     hueIndicator.Parent = hueFrame
 
-    -- Preview bar — над кнопками, ниже палитры
-    local preview = create("Frame", {
-        Size = UDim2.new(1,0,0,30),
-        Position = UDim2.new(0, 0, 0, 328), -- 40 + 280 + ~8 отступ
-        BackgroundColor3 = Color3.fromHSV(H,S,V),
-        ZIndex = 202, -- ниже палитры (203+), выше кнопок (200)
-    }, {})
-    preview.Parent = popup
-    addCorner(preview,6)
-    addStroke(preview,Theme.stroke,1,0.5)
+    -- Preview bar — аккуратно под палитрой, с нижней панелью
+local bottomContainer = create("Frame", {
+    Size = UDim2.new(1, 0, 0, 120),
+    Position = UDim2.new(0, 0, 0, 328), -- под палитрой
+    BackgroundTransparency = 1,
+    ZIndex = 202,
+}, {})
+bottomContainer.Parent = popup
 
-    -- Поля HEX и RGB (как на втором скриншоте)
-    local inputRow = create("Frame", {
-        Size = UDim2.new(1,0,0,36),
-        Position = UDim2.new(0,0,0, 366), -- под preview
-        BackgroundTransparency = 1,
-        ZIndex = 202,
-    }, {})
-    inputRow.Parent = popup
+local bottomLayout = Instance.new("UIListLayout")
+bottomLayout.Parent = bottomContainer
+bottomLayout.SortOrder = Enum.SortOrder.LayoutOrder
+bottomLayout.Padding = UDim.new(0, 8)
 
-    local function makeBox(ph,pos)
-        local box = create("TextBox", {
-            Size = UDim2.new(0, 140, 1, 0),
-            Position = pos,
-            BackgroundColor3 = Theme.panel2,
-            TextColor3 = Theme.text,
-            Font = FONT,
-            TextSize = 14,
-            PlaceholderText = ph,
-            ClearTextOnFocus = false,
-            ZIndex = 202,
-        }, {})
-        addCorner(box,8)
-        addStroke(box,Theme.stroke,1,0.6)
-        box.Parent = inputRow
-        return box
-    end
-    local hexBox = makeBox("#HEX", UDim2.new(0,0,0,0))
-    local rgbBox = makeBox("R,G,B", UDim2.new(0,150,0,0))
+-- preview (LayoutOrder = 1)
+local preview = create("Frame", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = Color3.fromHSV(H,S,V),
+    LayoutOrder = 1,
+    ZIndex = 202,
+}, {})
+addCorner(preview,6)
+addStroke(preview, Theme.stroke, 1, 0.5)
+preview.Parent = bottomContainer
 
-    -- Обновление визуала и текстовых полей
-    local function updatePreview()
-        preview.BackgroundColor3 = Color3.fromHSV(H,S,V)
-        svBase.BackgroundColor3 = Color3.fromHSV(H,1,1)
-        svIndicator.Position = UDim2.new(S, -5, 1-V, -5)
-        hueIndicator.Position = UDim2.new(0,0,H, -1)
+-- input row (HEX + RGB) (LayoutOrder = 2)
+local inputRow = create("Frame", {
+    Size = UDim2.new(1, 0, 0, 36),
+    BackgroundTransparency = 1,
+    LayoutOrder = 2,
+    ZIndex = 202,
+}, {})
+inputRow.Parent = bottomContainer
 
-        local c = preview.BackgroundColor3
-        local r,g,b = math.floor(c.R*255), math.floor(c.G*255), math.floor(c.B*255)
-        hexBox.Text = string.format("#%02X%02X%02X", r,g,b)
-        rgbBox.Text = string.format("%d,%d,%d", r,g,b)
-    end
-    updatePreview()
+local inputPadding = 8
+local hexBox = create("TextBox", {
+    Size = UDim2.new(0.48, -inputPadding/2, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundColor3 = Theme.panel2,
+    TextColor3 = Theme.text,
+    Font = FONT,
+    TextSize = 14,
+    PlaceholderText = "#HEX",
+    ClearTextOnFocus = false,
+    ZIndex = 202,
+}, {})
+addCorner(hexBox,6)
+addStroke(hexBox, Theme.stroke, 1, 0.6)
+hexBox.Parent = inputRow
 
-    -- S/V interactions
-    svFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            local function update(pos)
-                local relX = math.clamp((pos.X - svFrame.AbsolutePosition.X)/svFrame.AbsoluteSize.X,0,1)
-                local relY = math.clamp((pos.Y - svFrame.AbsolutePosition.Y)/svFrame.AbsoluteSize.Y,0,1)
-                S = relX
-                V = 1 - relY
-                updatePreview()
-            end
-            update(input.Position)
-            local conn
-            conn = UIS.InputChanged:Connect(function(ch)
-                if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
-                    update(ch.Position)
-                end
-            end)
-            UIS.InputEnded:Connect(function(endInput)
-                if endInput.UserInputType == input.UserInputType then
-                    if conn then conn:Disconnect() end
-                end
-            end)
-        end
-    end)
+local rgbBox = create("TextBox", {
+    Size = UDim2.new(0.48, -inputPadding/2, 1, 0),
+    Position = UDim2.new(0.52, 0, 0, 0),
+    BackgroundColor3 = Theme.panel2,
+    TextColor3 = Theme.text,
+    Font = FONT,
+    TextSize = 14,
+    PlaceholderText = "R,G,B",
+    ClearTextOnFocus = false,
+    ZIndex = 202,
+}, {})
+addCorner(rgbBox,6)
+addStroke(rgbBox, Theme.stroke, 1, 0.6)
+rgbBox.Parent = inputRow
 
-    -- Hue interactions
-    hueFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            local function update(pos)
-                local relY = math.clamp((pos.Y - hueFrame.AbsolutePosition.Y)/hueFrame.AbsoluteSize.Y,0,1)
-                H = relY
-                updatePreview()
-            end
-            update(input.Position)
-            local conn
-            conn = UIS.InputChanged:Connect(function(ch)
-                if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
-                    update(ch.Position)
-                end
-            end)
-            UIS.InputEnded:Connect(function(endInput)
-                if endInput.UserInputType == input.UserInputType then
-                    if conn then conn:Disconnect() end
-                end
-            end)
-        end
-    end)
+-- action buttons row (LayoutOrder = 3)
+local buttonsRow = create("Frame", {
+    Size = UDim2.new(1, 0, 0, 36),
+    BackgroundTransparency = 1,
+    LayoutOrder = 3,
+    ZIndex = 202,
+}, {})
+buttonsRow.Parent = bottomContainer
 
-    -- Ввод из HEX/RGB
-    local function setFromHex()
-        local t = tostring(hexBox.Text or ""):gsub("#","")
-        if #t == 6 then
-            local r = tonumber(t:sub(1,2),16) or 0
-            local g = tonumber(t:sub(3,4),16) or 0
-            local b = tonumber(t:sub(5,6),16) or 0
-            local c = Color3.fromRGB(r,g,b)
-            H,S,V = c:ToHSV()
-            updatePreview()
-        end
-    end
-    local function setFromRGB()
-        local t = tostring(rgbBox.Text or "")
-        local r,g,b = t:match("(%d+)%s*,%s*(%d+)%s*,%s*(%d+)")
-        r = math.clamp(tonumber(r or "0") or 0, 0, 255)
-        g = math.clamp(tonumber(g or "0") or 0, 0, 255)
-        b = math.clamp(tonumber(b or "0") or 0, 0, 255)
-        local c = Color3.fromRGB(r,g,b)
-        H,S,V = c:ToHSV()
-        updatePreview()
-    end
-    hexBox.FocusLost:Connect(setFromHex)
-    rgbBox.FocusLost:Connect(setFromRGB)
+local applyBtn = create("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundColor3 = Theme.accent,
+    Text = "Apply",
+    TextColor3 = Theme.text,
+    Font = FONT_B,
+    TextSize = 16,
+    ZIndex = 203,
+}, {})
+addCorner(applyBtn,6)
+withHover(applyBtn, Theme.accent, Theme.accentDim)
+applyBtn.Parent = buttonsRow
 
-    -- Кнопки
-    local applyBtn = create("TextButton", {
-        Size = UDim2.new(0.48,0,0,30),
-        Position = UDim2.new(0,0,1,-35),
-        BackgroundColor3 = Theme.accent,
-        Text = "Apply",
-        TextColor3 = Theme.text,
-        Font = FONT_B,
-        TextSize = 16,
-        ZIndex = 200,
-    }, {})
-    addCorner(applyBtn,6)
-    applyBtn.Parent = popup
+local cancelBtn = create("TextButton", {
+    Size = UDim2.new(0.48, 0, 1, 0),
+    Position = UDim2.new(0.52, 0, 0, 0),
+    BackgroundColor3 = Theme.control,
+    Text = "Cancel",
+    TextColor3 = Theme.text,
+    Font = FONT_B,
+    TextSize = 16,
+    ZIndex = 203,
+}, {})
+addCorner(cancelBtn,6)
+withHover(cancelBtn, Theme.control, Theme.hover)
+cancelBtn.Parent = buttonsRow
 
-    local cancelBtn = create("TextButton", {
-        Size = UDim2.new(0.48,0,0,30),
-        Position = UDim2.new(0.52,0,1,-35),
-        BackgroundColor3 = Theme.control,
-        Text = "Cancel",
-        TextColor3 = Theme.text,
-        Font = FONT_B,
-        TextSize = 16,
-        ZIndex = 200,
-    }, {})
-    addCorner(cancelBtn,6)
-    cancelBtn.Parent = popup
+-- подключаем обработчики
+applyBtn.MouseButton1Click:Connect(function()
+    if onApply then onApply(Color3.fromHSV(H,S,V)) end
+    overlay:Destroy()
+end)
+cancelBtn.MouseButton1Click:Connect(function()
+    overlay:Destroy()
+end)
 
-    applyBtn.MouseButton1Click:Connect(function()
-        if onApply then onApply(Color3.fromHSV(H,S,V)) end
-        overlay:Destroy()
-    end)
-    cancelBtn.MouseButton1Click:Connect(function()
-        overlay:Destroy()
-    end)
+-- обновление preview и текстовых полей
+local function updateBottomFields()
+    preview.BackgroundColor3 = Color3.fromHSV(H,S,V)
+    local c = preview.BackgroundColor3
+    local r,g,b = math.floor(c.R*255), math.floor(c.G*255), math.floor(c.B*255)
+    hexBox.Text = string.format("#%02X%02X%02X", r,g,b)
+    rgbBox.Text = string.format("%d,%d,%d", r,g,b)
+end
+
+-- вызвать синхронизацию сразу
+updateBottomFields()
+
 
     -- Закрытие по клику вне попапа
     overlay.MouseButton1Click:Connect(function()
