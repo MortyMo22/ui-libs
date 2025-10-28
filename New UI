@@ -90,8 +90,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     overlay.Parent = rootGui
 
     local popup = create("Frame", {
-        Size = UDim2.new(0, 320, 0, 360),
-        Position = UDim2.new(0.5, -160, 0.5, -180),
+        Size = UDim2.new(0, 360, 0, 410),
+        Position = UDim2.new(0.5, -180, 0.5, -205),
         BackgroundColor3 = Theme.panel,
         ZIndex = 201,
     }, {})
@@ -116,31 +116,30 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     local H,S,V = 0,1,1
     if startColor then H,S,V = startColor:ToHSV() end
 
-    -- квадрат палитры (Saturation/Value)
+    -- S/V square
     local svFrame = create("Frame", {
-        Size = UDim2.new(0, 260, 0, 260),
+        Size = UDim2.new(0, 280, 0, 280),
         Position = UDim2.new(0, 0, 0, 40),
         BackgroundColor3 = Color3.fromHSV(H,1,1),
-        ZIndex = 202,
+        ZIndex = 203,
         ClipsDescendants = true,
     }, {})
-        svFrame.Parent = popup
+    svFrame.Parent = popup
     addStroke(svFrame, Theme.stroke, 1, 0.5)
 
-    -- base hue layer (pure hue at full saturation/value)
+    -- base hue layer
     local svBase = create("Frame", {
         Size = UDim2.fromScale(1,1),
         BackgroundColor3 = Color3.fromHSV(H,1,1),
-        BackgroundTransparency = 0,
-        ZIndex = 202,
+        ZIndex = 203,
     }, {})
     svBase.Parent = svFrame
 
-    -- white overlay fades in from left (reduces saturation)
+    -- white overlay: белый непрозрачный слева -> прозрачный справа (уменьшает S слева)
     local whiteOverlay = create("Frame", {
         Size = UDim2.fromScale(1,1),
         BackgroundTransparency = 1,
-        ZIndex = 203,
+        ZIndex = 204,
     }, {})
     whiteOverlay.Parent = svFrame
     local whiteGrad = Instance.new("UIGradient")
@@ -149,17 +148,17 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ColorSequenceKeypoint.new(1, Color3.new(1,1,1)),
     }
     whiteGrad.Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0, 0), -- left is white (saturates to 0)
-        NumberSequenceKeypoint.new(1, 1), -- right transparent (keeps saturation)
+        NumberSequenceKeypoint.new(0, 0), -- слева белый (S=0)
+        NumberSequenceKeypoint.new(1, 1), -- справа прозрачный (S=1)
     }
     whiteGrad.Rotation = 0
     whiteGrad.Parent = whiteOverlay
 
-    -- black overlay fades in from top (reduces value)
+    -- black overlay: чёрный непрозрачный сверху -> прозрачный снизу (уменьшает V сверху)
     local blackOverlay = create("Frame", {
         Size = UDim2.fromScale(1,1),
         BackgroundTransparency = 1,
-        ZIndex = 204,
+        ZIndex = 205,
     }, {})
     blackOverlay.Parent = svFrame
     local blackGrad = Instance.new("UIGradient")
@@ -168,42 +167,41 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ColorSequenceKeypoint.new(1, Color3.new(0,0,0)),
     }
     blackGrad.Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0, 0), -- top is black (value to 0)
-        NumberSequenceKeypoint.new(1, 1), -- bottom transparent (full value)
+        NumberSequenceKeypoint.new(0, 0), -- сверху чёрный (V=0)
+        NumberSequenceKeypoint.new(1, 1), -- снизу прозрачный (V=1)
     }
     blackGrad.Rotation = 90
     blackGrad.Parent = blackOverlay
 
-    -- selection indicator on top
+    -- S/V indicator
     local svIndicator = create("Frame", {
         Size = UDim2.new(0,10,0,10),
         BackgroundColor3 = Color3.new(1,1,1),
         BorderSizePixel = 0,
-        ZIndex = 205,
+        ZIndex = 206,
     }, {})
     svIndicator.Parent = svFrame
     addCorner(svIndicator,5)
 
-    -- hue bar
+    -- Hue bar (multicolor spectrum)
     local hueFrame = create("Frame", {
-
-        Size = UDim2.new(0, 20, 0, 260),
-        Position = UDim2.new(0, 270, 0, 40),
+        Size = UDim2.new(0, 24, 0, 280),
+        Position = UDim2.new(0, 290, 0, 40),
         BackgroundColor3 = Color3.new(1,0,0),
-        ZIndex = 202,
+        ZIndex = 203,
     }, {})
     hueFrame.Parent = popup
     addStroke(hueFrame, Theme.stroke, 1, 0.5)
 
     local hueGrad = Instance.new("UIGradient")
     hueGrad.Color = ColorSequence.new{
-        ColorSequenceKeypoint.new(0, Color3.fromHSV(0,1,1)),
-        ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17,1,1)),
-        ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33,1,1)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5,1,1)),
-        ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67,1,1)),
-        ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83,1,1)),
-        ColorSequenceKeypoint.new(1, Color3.fromHSV(1,1,1)),
+        ColorSequenceKeypoint.new(0.00, Color3.fromHSV(0.00,1,1)),  -- red
+        ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17,1,1)),  -- yellow
+        ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33,1,1)),  -- green
+        ColorSequenceKeypoint.new(0.50, Color3.fromHSV(0.50,1,1)),  -- cyan
+        ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67,1,1)),  -- blue
+        ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83,1,1)),  -- magenta
+        ColorSequenceKeypoint.new(1.00, Color3.fromHSV(1.00,1,1)),  -- back to red
     }
     hueGrad.Rotation = 90
     hueGrad.Parent = hueFrame
@@ -212,40 +210,71 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         Size = UDim2.new(1,0,0,2),
         BackgroundColor3 = Color3.new(1,1,1),
         BorderSizePixel = 0,
-        ZIndex = 204,
+        ZIndex = 206,
     }, {})
     hueIndicator.Parent = hueFrame
 
-    -- предпросмотр
-        local preview = create("Frame", {
+    -- Preview bar (above buttons)
+    local preview = create("Frame", {
         Size = UDim2.new(1,0,0,30),
-        Position = UDim2.new(0, 0, 0, 308), -- just below 260px palette + ~48px header/padding
+        Position = UDim2.new(0, 0, 0, 328), -- 40 + 280 + 8
         BackgroundColor3 = Color3.fromHSV(H,S,V),
-        ZIndex = 201, -- lower than sv/hue (202+), higher than buttons (keep buttons at 200)
+        ZIndex = 202, -- ниже палитры (203+), выше кнопок (200)
     }, {})
     preview.Parent = popup
-
     addCorner(preview,6)
     addStroke(preview,Theme.stroke,1,0.5)
 
-    -- функции обновления
-        local function updatePreview()
+    -- RGB + HEX row like second screenshot
+    local inputRow = create("Frame", {
+        Size = UDim2.new(1,0,0,36),
+        Position = UDim2.new(0,0,0, 366), -- под preview
+        BackgroundTransparency = 1,
+        ZIndex = 202,
+    }, {})
+    inputRow.Parent = popup
+
+    local function makeBox(ph,pos)
+        local box = create("TextBox", {
+            Size = UDim2.new(0, 100, 1, 0),
+            Position = pos,
+            BackgroundColor3 = Theme.panel2,
+            TextColor3 = Theme.text,
+            Font = FONT,
+            TextSize = 14,
+            PlaceholderText = ph,
+            ClearTextOnFocus = false,
+            ZIndex = 202,
+        }, {})
+        addCorner(box,8)
+        addStroke(box,Theme.stroke,1,0.6)
+        box.Parent = inputRow
+        return box
+    end
+    local hexBox = makeBox("#HEX", UDim2.new(0,0,0,0))
+    local rgbBox = makeBox("R,G,B", UDim2.new(0,110,0,0))
+
+    local function updatePreview()
         preview.BackgroundColor3 = Color3.fromHSV(H,S,V)
         svBase.BackgroundColor3 = Color3.fromHSV(H,1,1)
         svIndicator.Position = UDim2.new(S, -5, 1-V, -5)
         hueIndicator.Position = UDim2.new(0,0,H, -1)
-    end
 
+        local c = preview.BackgroundColor3
+        local r,g,b = math.floor(c.R*255), math.floor(c.G*255), math.floor(c.B*255)
+        hexBox.Text = string.format("#%02X%02X%02X", r,g,b)
+        rgbBox.Text = string.format("%d,%d,%d", r,g,b)
+    end
     updatePreview()
 
-    -- обработка кликов по квадрату
+    -- S/V interactions
     svFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local function update(pos)
                 local relX = math.clamp((pos.X - svFrame.AbsolutePosition.X)/svFrame.AbsoluteSize.X,0,1)
                 local relY = math.clamp((pos.Y - svFrame.AbsolutePosition.Y)/svFrame.AbsoluteSize.Y,0,1)
                 S = relX
-                V = 1-relY
+                V = 1 - relY
                 updatePreview()
             end
             update(input.Position)
@@ -263,7 +292,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         end
     end)
 
-    -- обработка кликов по hue bar
+    -- Hue interactions
     hueFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local function update(pos)
@@ -286,7 +315,36 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         end
     end)
 
-        local applyBtn = create("TextButton", {
+    -- Parse RGB and HEX inputs
+    local function setFromHex()
+        local t = tostring(hexBox.Text or ""):gsub("#","")
+        if #t == 6 then
+            local r = tonumber(t:sub(1,2),16) or 0
+            local g = tonumber(t:sub(3,4),16) or 0
+            local b = tonumber(t:sub(5,6),16) or 0
+            local c = Color3.fromRGB(r,g,b)
+            H,S,V = c:ToHSV()
+            updatePreview()
+        end
+    end
+    local function setFromRGB()
+        local t = tostring(rgbBox.Text or "")
+        local r,g,b = t:match("(%d+)%s*,%s*(%d+)%s*,%s*(%d+)")
+        r = tonumber(r or "0") or 0
+        g = tonumber(g or "0") or 0
+        b = tonumber(b or "0") or 0
+        r = math.clamp(r,0,255)
+        g = math.clamp(g,0,255)
+        b = math.clamp(b,0,255)
+        local c = Color3.fromRGB(r,g,b)
+        H,S,V = c:ToHSV()
+        updatePreview()
+    end
+    hexBox.FocusLost:Connect(setFromHex)
+    rgbBox.FocusLost:Connect(setFromRGB)
+
+    -- Buttons (below preview)
+    local applyBtn = create("TextButton", {
         Size = UDim2.new(0.48,0,0,30),
         Position = UDim2.new(0,0,1,-35),
         BackgroundColor3 = Theme.accent,
@@ -312,27 +370,22 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     addCorner(cancelBtn,6)
     cancelBtn.Parent = popup
 
-
-    -- обработчики кнопок
     applyBtn.MouseButton1Click:Connect(function()
-        if onApply then
-            onApply(Color3.fromHSV(H,S,V))
-        end
+        if onApply then onApply(Color3.fromHSV(H,S,V)) end
         overlay:Destroy()
     end)
-
     cancelBtn.MouseButton1Click:Connect(function()
         overlay:Destroy()
     end)
 
-    -- закрытие по клику вне попапа
+    -- Close on click outside
     overlay.MouseButton1Click:Connect(function()
         local mouse = UIS:GetMouseLocation()
         local pos = Vector2.new(mouse.X, mouse.Y)
         local p0 = popup.AbsolutePosition
         local ps = popup.AbsoluteSize
         local inside = pos.X >= p0.X and pos.X <= p0.X + ps.X
-                      and pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
+                    and pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
         if not inside then
             overlay:Destroy()
         end
