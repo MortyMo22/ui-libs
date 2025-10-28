@@ -173,14 +173,40 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     blackGrad.Rotation = 90
     blackGrad.Parent = blackOverlay
 
+local updatePreview -- forward declaration so svHandlePos can call it safely
+
     -- ВАЖНО: единая функция обработки позиций внутри S/V квадрата
     local function svHandlePos(pos)
-        local relX = math.clamp((pos.X - svFrame.AbsolutePosition.X)/svFrame.AbsoluteSize.X, 0, 1)
-        local relY = math.clamp((pos.Y - svFrame.AbsolutePosition.Y)/svFrame.AbsoluteSize.Y, 0, 1)
-        S = relX
-        V = 1 - relY
-        updatePreview()
+    local relX = math.clamp((pos.X - svFrame.AbsolutePosition.X)/svFrame.AbsoluteSize.X, 0, 1)
+    local relY = math.clamp((pos.Y - svFrame.AbsolutePosition.Y)/svFrame.AbsoluteSize.Y, 0, 1)
+    S = relX
+    V = 1 - relY
+
+    -- Немедленно обновляем визуал здесь, чтобы не зависеть от внешней функции updatePreview
+    -- Обновляем preview если он существует
+    if preview then
+        preview.BackgroundColor3 = Color3.fromHSV(H, S, V)
     end
+
+    -- Обновляем базу палитры (svBase) если она существует
+    if svBase then
+        svBase.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
+    end
+
+    -- Обновляем индикаторы, если они существуют
+    if svIndicator then
+        svIndicator.Position = UDim2.new(S, -5, 1 - V, -5)
+    end
+    if hueIndicator then
+        hueIndicator.Position = UDim2.new(0, 0, H, -1)
+    end
+
+    -- Обновляем нижние текстовые поля, если функция есть
+    if updateBottomFields then
+        pcall(updateBottomFields)
+    end
+end
+
 
     -- Подпишем обработчики InputBegan на все три видимых слоёв (svFrame и оба overlays)
     local function attachSVInput(listenObj)
