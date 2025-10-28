@@ -78,7 +78,21 @@ local FONT_B = Enum.Font.GothamBold
 local RoundedUI = {}
 
 -- Internal: Color picker popup
-local M = {}
+-- Replace the existing createColorPickerPopup function with this implementation.
+-- Assumptions:
+--  * Your UI library exposes helper functions: create(props...), addCorner(gui, radius), addStroke(gui, color, thickness, transparency),
+--    withHover(gui, primary, hover), Theme table, FONT / FONT_B constants, and isMobile() helper (if not, fallback to simple checks provided).
+--  * If some helpers are missing, the function will attempt safe fallbacks (uses Instance.new).
+--  * This function prefers creating its own modal ScreenGui with IgnoreGuiInset = true to avoid SafeArea / Topbar gaps and to block input
+--    to UI underneath while colorpicker is open (this fixes the "click passes through" bug).
+--
+-- Usage:
+--   createColorPickerPopup(rootScreenGui, startColor, onApply)
+--     - rootScreenGui: (optional) a ScreenGui instance belonging to your UI. If nil, will parent modal to PlayerGui.
+--     - startColor: initial Color3 (optional)
+--     - onApply: function(newColor: Color3) called when user presses OK / Apply
+--
+-- The function returns nothing; it creates a modal picker which calls onApply and destroys itself when closed.
 local function createColorPickerPopup(rootGui, startColor, onApply)
 	-- Services
 	local Players = game:GetService("Players")
@@ -775,10 +789,6 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 		SetColor = function(c) if typeof(c) == "Color3" then updatePreviewAndFields(c) end end,
 	}
 end
-
-end
-M.createColorPickerPopup = createColorPickerPopup
-return M
 
 
 -- API: Window -> Tabs -> UnderSections -> Controls
