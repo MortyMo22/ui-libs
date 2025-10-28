@@ -116,18 +116,18 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     local H,S,V = 0,1,1
     if startColor then H,S,V = startColor:ToHSV() end
 
-    -- S/V square
+    -- S/V square (слева белый, сверху чёрный; справа-внизу чистый оттенок)
     local svFrame = create("Frame", {
         Size = UDim2.new(0, 280, 0, 280),
         Position = UDim2.new(0, 0, 0, 40),
-        BackgroundColor3 = Color3.fromHSV(H,1,1),
+        BackgroundTransparency = 1,
         ZIndex = 203,
         ClipsDescendants = true,
     }, {})
     svFrame.Parent = popup
     addStroke(svFrame, Theme.stroke, 1, 0.5)
 
-    -- base hue layer
+    -- Base hue
     local svBase = create("Frame", {
         Size = UDim2.fromScale(1,1),
         BackgroundColor3 = Color3.fromHSV(H,1,1),
@@ -135,7 +135,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     }, {})
     svBase.Parent = svFrame
 
-    -- white overlay: белый непрозрачный слева -> прозрачный справа (уменьшает S слева)
+    -- White overlay: белый слева -> прозрачный справа (уменьшает S слева)
     local whiteOverlay = create("Frame", {
         Size = UDim2.fromScale(1,1),
         BackgroundTransparency = 1,
@@ -148,13 +148,13 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ColorSequenceKeypoint.new(1, Color3.new(1,1,1)),
     }
     whiteGrad.Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0, 0), -- слева белый (S=0)
-        NumberSequenceKeypoint.new(1, 1), -- справа прозрачный (S=1)
+        NumberSequenceKeypoint.new(0, 0), -- белый слева
+        NumberSequenceKeypoint.new(1, 1), -- справа прозрачный
     }
     whiteGrad.Rotation = 0
     whiteGrad.Parent = whiteOverlay
 
-    -- black overlay: чёрный непрозрачный сверху -> прозрачный снизу (уменьшает V сверху)
+    -- Black overlay: чёрный сверху -> прозрачный снизу (уменьшает V сверху)
     local blackOverlay = create("Frame", {
         Size = UDim2.fromScale(1,1),
         BackgroundTransparency = 1,
@@ -167,8 +167,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ColorSequenceKeypoint.new(1, Color3.new(0,0,0)),
     }
     blackGrad.Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0, 0), -- сверху чёрный (V=0)
-        NumberSequenceKeypoint.new(1, 1), -- снизу прозрачный (V=1)
+        NumberSequenceKeypoint.new(0, 0), -- чёрный сверху
+        NumberSequenceKeypoint.new(1, 1), -- снизу прозрачный
     }
     blackGrad.Rotation = 90
     blackGrad.Parent = blackOverlay
@@ -183,7 +183,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     svIndicator.Parent = svFrame
     addCorner(svIndicator,5)
 
-    -- Hue bar (multicolor spectrum)
+    -- Hue bar: многоцветный спектр сверху вниз
     local hueFrame = create("Frame", {
         Size = UDim2.new(0, 24, 0, 280),
         Position = UDim2.new(0, 290, 0, 40),
@@ -214,10 +214,10 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     }, {})
     hueIndicator.Parent = hueFrame
 
-    -- Preview bar (above buttons)
+    -- Preview bar — над кнопками, ниже палитры
     local preview = create("Frame", {
         Size = UDim2.new(1,0,0,30),
-        Position = UDim2.new(0, 0, 0, 328), -- 40 + 280 + 8
+        Position = UDim2.new(0, 0, 0, 328), -- 40 + 280 + ~8 отступ
         BackgroundColor3 = Color3.fromHSV(H,S,V),
         ZIndex = 202, -- ниже палитры (203+), выше кнопок (200)
     }, {})
@@ -225,7 +225,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     addCorner(preview,6)
     addStroke(preview,Theme.stroke,1,0.5)
 
-    -- RGB + HEX row like second screenshot
+    -- Поля HEX и RGB (как на втором скриншоте)
     local inputRow = create("Frame", {
         Size = UDim2.new(1,0,0,36),
         Position = UDim2.new(0,0,0, 366), -- под preview
@@ -236,7 +236,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     local function makeBox(ph,pos)
         local box = create("TextBox", {
-            Size = UDim2.new(0, 100, 1, 0),
+            Size = UDim2.new(0, 140, 1, 0),
             Position = pos,
             BackgroundColor3 = Theme.panel2,
             TextColor3 = Theme.text,
@@ -252,8 +252,9 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         return box
     end
     local hexBox = makeBox("#HEX", UDim2.new(0,0,0,0))
-    local rgbBox = makeBox("R,G,B", UDim2.new(0,110,0,0))
+    local rgbBox = makeBox("R,G,B", UDim2.new(0,150,0,0))
 
+    -- Обновление визуала и текстовых полей
     local function updatePreview()
         preview.BackgroundColor3 = Color3.fromHSV(H,S,V)
         svBase.BackgroundColor3 = Color3.fromHSV(H,1,1)
@@ -315,7 +316,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         end
     end)
 
-    -- Parse RGB and HEX inputs
+    -- Ввод из HEX/RGB
     local function setFromHex()
         local t = tostring(hexBox.Text or ""):gsub("#","")
         if #t == 6 then
@@ -330,12 +331,9 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     local function setFromRGB()
         local t = tostring(rgbBox.Text or "")
         local r,g,b = t:match("(%d+)%s*,%s*(%d+)%s*,%s*(%d+)")
-        r = tonumber(r or "0") or 0
-        g = tonumber(g or "0") or 0
-        b = tonumber(b or "0") or 0
-        r = math.clamp(r,0,255)
-        g = math.clamp(g,0,255)
-        b = math.clamp(b,0,255)
+        r = math.clamp(tonumber(r or "0") or 0, 0, 255)
+        g = math.clamp(tonumber(g or "0") or 0, 0, 255)
+        b = math.clamp(tonumber(b or "0") or 0, 0, 255)
         local c = Color3.fromRGB(r,g,b)
         H,S,V = c:ToHSV()
         updatePreview()
@@ -343,7 +341,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     hexBox.FocusLost:Connect(setFromHex)
     rgbBox.FocusLost:Connect(setFromRGB)
 
-    -- Buttons (below preview)
+    -- Кнопки
     local applyBtn = create("TextButton", {
         Size = UDim2.new(0.48,0,0,30),
         Position = UDim2.new(0,0,1,-35),
@@ -378,7 +376,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         overlay:Destroy()
     end)
 
-    -- Close on click outside
+    -- Закрытие по клику вне попапа
     overlay.MouseButton1Click:Connect(function()
         local mouse = UIS:GetMouseLocation()
         local pos = Vector2.new(mouse.X, mouse.Y)
