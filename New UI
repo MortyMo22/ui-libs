@@ -777,6 +777,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 end
 
 RoundedUI.createColorPickerPopup = createColorPickerPopup
+return RoundedUI
 
 -- API: Window -> Tabs -> UnderSections -> Controls
 function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
