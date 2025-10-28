@@ -124,7 +124,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ZIndex = 203,
         ClipsDescendants = true,
     }, {})
-    svFrame.Parent = popup
+        svFrame.Parent = popup
     addStroke(svFrame, Theme.stroke, 1, 0.5)
 
     -- Base hue
@@ -172,6 +172,40 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     }
     blackGrad.Rotation = 90
     blackGrad.Parent = blackOverlay
+
+    -- ВАЖНО: единая функция обработки позиций внутри S/V квадрата
+    local function svHandlePos(pos)
+        local relX = math.clamp((pos.X - svFrame.AbsolutePosition.X)/svFrame.AbsoluteSize.X, 0, 1)
+        local relY = math.clamp((pos.Y - svFrame.AbsolutePosition.Y)/svFrame.AbsoluteSize.Y, 0, 1)
+        S = relX
+        V = 1 - relY
+        updatePreview()
+    end
+
+    -- Подпишем обработчики InputBegan на все три видимых слоёв (svFrame и оба overlays)
+    local function attachSVInput(listenObj)
+        listenObj.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                svHandlePos(input.Position)
+                local conn
+                conn = UIS.InputChanged:Connect(function(ch)
+                    if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
+                        svHandlePos(ch.Position)
+                    end
+                end)
+                UIS.InputEnded:Connect(function(endInput)
+                    if endInput.UserInputType == input.UserInputType then
+                        if conn then conn:Disconnect() end
+                    end
+                end)
+            end
+        end)
+    end
+
+    attachSVInput(svFrame)
+    attachSVInput(whiteOverlay)
+    attachSVInput(blackOverlay)
+
 
     -- S/V indicator
     local svIndicator = create("Frame", {
