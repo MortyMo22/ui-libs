@@ -1,0 +1,884 @@
+-- SUMOHOOK.lua
+-- Unified UI library with mobile support, adaptive scaling, theme editing and built-in color picker.
+-- Author: adapted for user
+-- Usage:
+-- local Lib = loadstring(game:HttpGet("..."))()
+-- local win = Lib:Window("Title")
+-- local serv = win:Server("Tab")
+-- local ch = serv:Channel("Section","Left")
+-- ch:Button("Test", callback)
+
+-- == CONFIG == --
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local HttpService = game:GetService("HttpService")
+
+local player = Players.LocalPlayer
+if not player then
+	error("SUMOHOOK must run as LocalScript", 2)
+end
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Utility
+local function deepCopy(t)
+	if type(t) ~= "table" then return t end
+	local res = {}
+	for k,v in pairs(t) do res[k] = deepCopy(v) end
+	return res
+end
+
+local function safeAssign(obj, props)
+	if not props then return end
+	for k,v in pairs(props) do
+		pcall(function() obj[k] = v end)
+	end
+end
+
+local function new(class, props)
+	local o = Instance.new(class)
+	safeAssign(o, props)
+	return o
+end
+
+local function addUICorner(gui, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 6)
+	c.Parent = gui
+	return c
+end
+
+local function addUIStroke(gui, color, thickness, trans)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Color3.new(0,0,0)
+	s.Thickness = thickness or 1
+	s.Transparency = trans or 0
+	s.Parent = gui
+	return s
+end
+
+-- Default theme (user can override at load or runtime)
+local DEFAULT_THEME = {
+	Background = Color3.fromRGB(24,24,24),
+	Panel = Color3.fromRGB(30,30,30),
+	Panel2 = Color3.fromRGB(40,40,40),
+	Text = Color3.fromRGB(232,232,232),
+	TextDim = Color3.fromRGB(170,170,170),
+	Accent = Color3.fromRGB(80,170,255),
+	Control = Color3.fromRGB(45,45,45),
+	Stroke = Color3.fromRGB(0,0,0),
+	Warn = Color3.fromRGB(220,80,80),
+	Hover = Color3.fromRGB(60,60,60),
+}
+
+-- Library table
+local Lib = {}
+Lib._VERSION = "SUMOHOOK-1.0"
+Lib.Theme = deepCopy(DEFAULT_THEME)
+
+-- User helpers (exposed for convenience)
+Lib.addCorner = addUICorner
+Lib.addStroke = addUIStroke
+
+-- == CORE: create ScreenGui root + UIScale adaptive ==
+local function createRootScreenGui(name)
+	local sg = Instance.new("ScreenGui")
+	sg.Name = name or "SUMOHOOK"
+	sg.ResetOnSpawn = false
+	-- prefer PlayerGui parenting
+	sg.Parent = playerGui
+	-- Cover safe area by ignoring inset if property exists (PlayerGui ScreenGui supports IgnoreGuiInset)
+	if sg:GetAttribute("IgnoreGuiInset") ~= nil then
+		-- not standard property in all runtimes; just try setting if available
+		pcall(function() sg.IgnoreGuiInset = true end)
+	else
+		-- older fallback: set to don't use topbar? Try nothing
+	end
+	sg.DisplayOrder = 1000
+	return sg
+end
+
+local rootScreenGui = createRootScreenGui("SUMOHOOK_Root")
+
+-- Adaptive UIScale: choose scale by viewport size and touch presence
+local uiScale = Instance.new("UIScale")
+uiScale.Parent = rootScreenGui
+
+local function updateScale()
+	local vw = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1366,768)
+	local base = math.clamp(math.min(vw.X / 1366, vw.Y / 768), 0.7, 1.2)
+	-- if touch device, increase scale slightly for readability
+	local touchBoost = (UserInputService.TouchEnabled and not UserInputService.MouseEnabled) and 1.1 or 1
+	uiScale.Scale = base * touchBoost
+end
+updateScale()
+UserInputService.WindowSizeChanged:Connect(updateScale)
+
+-- Safe area inset fix: compute offset for GetGuiObjectsAtPosition adjustments
+local function getTopbarInsetHeight()
+	local inset = 0
+	pcall(function()
+		local g = GuiService:GetGuiInset()
+		inset = g.Y
+	end)
+	-- GuiService.TopbarInset exists in some clients
+	pcall(function()
+		if GuiService.TopbarInset then
+			inset = math.max(inset, GuiService.TopbarInset.Height)
+		end
+	end)
+	return inset
+end
+
+-- == Utilities: Input handlers (universal) ==
+local function connectButton(btn, callback)
+	if not btn then return end
+	-- Prefer :Activated
+	btn.Activated:Connect(function()
+		pcall(callback)
+	end)
+	-- Also fallback to MouseButton1Click for old consistency
+	if btn:IsA("TextButton") or btn:IsA("ImageButton") then
+		btn.MouseButton1Click:Connect(function()
+			pcall(callback)
+		end)
+	end
+end
+
+-- Notification API (simple)
+function Lib:Notification(title, text, buttonText)
+	local StarterGui = game:GetService("StarterGui")
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = tostring(title or "Notification"),
+			Text = tostring(text or ""),
+			Duration = 4,
+			Button1 = tostring(buttonText or "OK")
+		})
+	end)
+end
+
+-- Theme control
+function Lib:SetTheme(newTheme)
+	if type(newTheme) ~= "table" then return end
+	for k,v in pairs(newTheme) do
+		self.Theme[k] = v
+	end
+	self:ReloadTheme()
+end
+
+-- We'll keep a list of active style-updatable elements to apply theme changes
+Lib._styled = {}
+
+function Lib:registerStyled(gui, props)
+	-- props is a table of functions or property mappings to update when theme reload occurs
+	table.insert(self._styled, {gui = gui, props = props})
+end
+
+function Lib:ReloadTheme()
+	for _, entry in ipairs(self._styled) do
+		local gui, props = entry.gui, entry.props
+		local ok, _ = pcall(function()
+			for propName, val in pairs(props) do
+				if type(val) == "function" then
+					val(gui, self.Theme)
+				else
+					pcall(function() gui[propName] = val end)
+				end
+			end
+		end)
+	end
+end
+
+-- == Core UI helpers (create standardized controls) ==
+local FONT = Enum.Font.Gotham
+local FONT_B = Enum.Font.GothamBold
+
+local function makeLabel(text, parent, opts)
+	opts = opts or {}
+	local lbl = new("TextLabel", {
+		Parent = parent,
+		Text = tostring(text or ""),
+		BackgroundTransparency = 1,
+		Font = opts.Font or FONT,
+		TextSize = opts.TextSize or 14,
+		TextColor3 = Lib.Theme.Text,
+		TextXAlignment = opts.Align or Enum.TextXAlignment.Left,
+		Size = opts.Size or UDim2.new(1,0,0,18),
+	})
+	return lbl
+end
+
+-- Generic section container creation
+local function createSection(parent, title)
+	local frame = new("Frame", {
+		Parent = parent,
+		Size = UDim2.new(1,0,0,120),
+		BackgroundColor3 = Lib.Theme.Panel,
+		BorderSizePixel = 0,
+	})
+	addUICorner(frame, 8)
+	addUIStroke(frame, Lib.Theme.Stroke, 1, 0.6)
+	local titleLbl = makeLabel(title, frame, {TextSize = 15, Font = FONT_B, Align = Enum.TextXAlignment.Left, Size = UDim2.new(1,0,0,24)})
+	titleLbl.Position = UDim2.new(0,8,0,8)
+	return frame, titleLbl
+end
+
+-- == Color Picker Implementation ==
+-- A compact, mobile-friendly color picker popup integrated into library.
+-- Returns nothing; calls 'onApply(Color3)' on apply.
+local function createColorPickerPopup(rootGui, startColor, onApply)
+	startColor = startColor or Color3.fromRGB(255, 0, 0)
+	local modal = new("ScreenGui", {Parent = (rootGui and rootGui:IsA("ScreenGui") and rootGui) or playerGui, ResetOnSpawn = false, DisplayOrder = 9999})
+	-- try to ignore inset if property exists
+	pcall(function() modal.IgnoreGuiInset = true end)
+
+	local overlay = new("TextButton", {
+		Parent = modal,
+		Name = "Overlay",
+		Size = UDim2.fromScale(1,1),
+		BackgroundColor3 = Color3.new(0,0,0),
+		BackgroundTransparency = 0.55,
+		BorderSizePixel = 0,
+		Text = "",
+		AutoButtonColor = false,
+	})
+	overlay.Active = true
+
+	local popup = new("Frame", {
+		Parent = overlay,
+		Size = UDim2.new(0, 420, 0, 320),
+		AnchorPoint = Vector2.new(0.5,0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundColor3 = Lib.Theme.Panel,
+		BorderSizePixel = 0,
+	})
+	addUICorner(popup, 12)
+	addUIStroke(popup, Lib.Theme.Stroke, 1, 0.5)
+
+	-- Responsive size for mobile
+	local function adapt()
+		local vw = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1366,768)
+		if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+			popup.Size = UDim2.new(0.9,0,0.78,0)
+			popup.Position = UDim2.fromScale(0.5, 0.5)
+		else
+			local w = math.min(520, math.max(380, vw.X * 0.35))
+			local h = math.min(420, math.max(300, vw.Y * 0.44))
+			popup.Size = UDim2.new(0, w, 0, h)
+			popup.Position = UDim2.fromScale(0.5, 0.5)
+		end
+	end
+	adapt()
+	UserInputService.WindowSizeChanged:Connect(adapt)
+
+	-- Layout: left color square, right preview + inputs
+	local padding = 12
+	local left = new("Frame", {Parent = popup, Size = UDim2.new(0.65, -padding, 1, -padding*2), Position = UDim2.new(0, padding, 0, padding), BackgroundTransparency = 1})
+	local right = new("Frame", {Parent = popup, Size = UDim2.new(0.35, -padding, 1, -padding*2), Position = UDim2.new(0.65, padding*0.5, 0, padding), BackgroundTransparency = 1})
+
+	-- left: color square and value bar
+	local colorArea = new("Frame", {Parent = left, Size = UDim2.new(1, -40, 0.72, 0), Position = UDim2.new(0,0,0,30), BackgroundColor3 = Lib.Theme.Panel2})
+	addUICorner(colorArea, 8)
+	local colorSquare = new("Frame", {Parent = colorArea, Size = UDim2.new(1,0,1,0), BackgroundColor3 = Color3.new(1,0,0)})
+	colorSquare.ClipsDescendants = true
+	addUICorner(colorSquare, 6)
+	local satGradient = Instance.new("UIGradient", colorSquare)
+	satGradient.Rotation = 0
+	-- value overlay
+	local valFrame = new("Frame", {Parent = colorSquare, Size = UDim2.new(1,0,1,0), BackgroundTransparency = 1})
+	local valGrad = Instance.new("UIGradient", valFrame)
+	valGrad.Rotation = 90
+	valGrad.Color = ColorSequence.new({ColorSequenceKeypoint.new(0,Color3.new(0,0,0)), ColorSequenceKeypoint.new(1, Color3.new(1,1,1))})
+
+	-- color cursor
+	local cursor = new("Frame", {Parent = colorSquare, Size = UDim2.new(0,18,0,18), AnchorPoint = Vector2.new(0.5,0.5), BackgroundColor3 = Color3.new(1,1,1)})
+	addUICorner(cursor, 9)
+	addUIStroke(cursor, Color3.new(0,0,0), 1, 0.7)
+	local inner = new("Frame", {Parent = cursor, Size = UDim2.new(0,8,0,8), AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5,0.5), BackgroundColor3 = Color3.new(0,0,0)})
+	addUICorner(inner, 4)
+
+	local valueContainer = new("Frame", {Parent = colorArea, Size = UDim2.new(0.12, 0, 1, 0), Position = UDim2.new(0.88, -10, 0, 0), BackgroundTransparency = 1})
+	local valueBar = new("Frame", {Parent = valueContainer, Size = UDim2.new(1,0,1,0), BackgroundColor3 = Color3.new(1,1,1)})
+	addUICorner(valueBar, 6)
+	local grip = new("Frame", {Parent = valueContainer, Size = UDim2.new(1,0,0,6), AnchorPoint = Vector2.new(0,0.5), Position = UDim2.new(0,0,0.5,0), BackgroundColor3 = Lib.Theme.Control})
+	addUICorner(grip, 4)
+	addUIStroke(grip, Lib.Theme.Stroke, 1, 0.6)
+
+	-- Right: preview box
+	local preview = new("Frame", {Parent = right, Size = UDim2.new(1,0,0,64), BackgroundColor3 = startColor})
+	addUICorner(preview, 8)
+	addUIStroke(preview, Lib.Theme.Stroke, 1, 0.5)
+	local hexLabel = new("TextLabel", {Parent = popup, Text = "", BackgroundTransparency = 1, Position = UDim2.new(0.6, -12, 0, 12), Size = UDim2.new(0.4,0,0,20), Font = FONT, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = Lib.Theme.TextDim})
+
+	-- Buttons
+	local eye = new("TextButton", {Parent = right, Text = "Eye drop", BackgroundColor3 = Lib.Theme.Control, Size = UDim2.new(1,0,0,32), Position = UDim2.new(0,0,0,76), Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text})
+	addUICorner(eye, 6)
+	addUIStroke(eye, Lib.Theme.Stroke, 1, 0.5)
+
+	local ok = new("TextButton", {Parent = right, Text = "OK", BackgroundColor3 = Lib.Theme.Accent, Size = UDim2.new(1,0,0,36), Position = UDim2.new(0,0,1,-40), Font = FONT_B, TextSize = 16, TextColor3 = Lib.Theme.Text})
+	addUICorner(ok, 8)
+	local cancel = new("TextButton", {Parent = right, Text = "Cancel", BackgroundColor3 = Lib.Theme.Control, Size = UDim2.new(1,0,0,36), Position = UDim2.new(0,0,1,0), Font = FONT_B, TextSize = 16, TextColor3 = Lib.Theme.Text})
+	addUICorner(cancel, 8)
+
+	-- Numeric boxes (compact)
+	local function makeBox(parent, y, name, placeholder)
+		local cont = new("Frame", {Parent = parent, Size = UDim2.new(1,0,0,26), Position = UDim2.new(0,0,0,y), BackgroundTransparency = 1})
+		local lbl = new("TextLabel", {Parent = cont, Size = UDim2.new(0.45,0,1,0), BackgroundTransparency = 1, Font = FONT, Text = name, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Lib.Theme.TextDim, TextSize = 14})
+		local box = new("TextBox", {Parent = cont, Size = UDim2.new(0.55,-6,1,0), Position = UDim2.new(0.45,6,0,0), BackgroundColor3 = Lib.Theme.Panel2, Text = "", PlaceholderText = placeholder or "", Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text, ClearTextOnFocus = false})
+		addUICorner(box, 6)
+		addUIStroke(box, Lib.Theme.Stroke, 1, 0.5)
+		return box
+	end
+
+	local numericParent = new("Frame", {Parent = right, Size = UDim2.new(1,0,0,160), Position = UDim2.new(0,0,0,118), BackgroundTransparency = 1})
+	local hueBox = makeBox(numericParent, 0, "Hue", "0-359")
+	local satBox = makeBox(numericParent, 28, "Saturation", "0-255")
+	local valBox = makeBox(numericParent, 56, "Value", "0-255")
+	local rBox = makeBox(numericParent, 84, "Red", "0-255")
+	local gBox = makeBox(numericParent, 112, "Green", "0-255")
+	local bBox = makeBox(numericParent, 140, "Blue", "0-255")
+	local hexBox = new("TextBox", {Parent = right, Size = UDim2.new(1,0,0,28), Position = UDim2.new(0,0,0,84), BackgroundColor3 = Lib.Theme.Panel2, PlaceholderText = "#RRGGBB", Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text})
+	addUICorner(hexBox, 6)
+	addUIStroke(hexBox, Lib.Theme.Stroke, 1, 0.5)
+
+	-- state
+	local CP = {
+		h = startColor:ToHSV(),
+		s = 1,
+		v = 1,
+		current = startColor,
+		active = true,
+		usingEye = false,
+	}
+	CP.h, CP.s, CP.v = startColor:ToHSV()
+
+	local function updateAll(color)
+		if not color then return end
+		CP.current = color
+		CP.h, CP.s, CP.v = color:ToHSV()
+		colorSquare.BackgroundColor3 = Color3.fromHSV(CP.h,1,1)
+		valueBar.BackgroundColor3 = Color3.fromHSV(CP.h, CP.s, 1)
+		preview.BackgroundColor3 = color
+		local r,g,b = math.floor(color.R*255+0.5), math.floor(color.G*255+0.5), math.floor(color.B*255+0.5)
+		hexLabel.Text = "#" .. string.format("%02X%02X%02X", r,g,b)
+		hexBox.Text = "#" .. string.format("%02X%02X%02X", r,g,b)
+		hueBox.Text = tostring(math.floor(CP.h*359+0.5))
+		satBox.Text = tostring(math.floor(CP.s*255+0.5))
+		valBox.Text = tostring(math.floor(CP.v*255+0.5))
+		rBox.Text = tostring(r)
+		gBox.Text = tostring(g)
+		bBox.Text = tostring(b)
+		cursor.Position = UDim2.new(1-CP.h,0,1-CP.s,0)
+		grip.Position = UDim2.new(0,0,1-CP.v,0)
+	end
+	updateAll(startColor)
+
+	-- interaction
+	local draggingColor = false
+	local draggingValue = false
+
+	local function sampleColorFromPoint(x,y)
+		local pos = colorSquare.AbsolutePosition
+		local size = colorSquare.AbsoluteSize
+		local topInset = getTopbarInsetHeight()
+		local rx = (x - pos.X) / size.X
+		local ry = (y - pos.Y - 0) / size.Y
+		rx = math.clamp(rx,0,1)
+		ry = math.clamp(ry,0,1)
+		CP.h = 1 - rx
+		CP.s = 1 - ry
+		CP.current = Color3.fromHSV(CP.h, CP.s, CP.v)
+		updateAll(CP.current)
+	end
+
+	colorSquare.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingColor = true
+			local loc = UserInputService:GetMouseLocation()
+			sampleColorFromPoint(loc.X, loc.Y)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if not draggingColor then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local loc = input.Position or UserInputService:GetMouseLocation()
+			sampleColorFromPoint(loc.X, loc.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingColor = false
+		end
+	end)
+
+	local function sampleValueFromPoint(x,y)
+		local pos = valueContainer.AbsolutePosition
+		local size = valueContainer.AbsoluteSize
+		local ry = (y - pos.Y) / size.Y
+		ry = math.clamp(ry,0,1)
+		CP.v = 1 - ry
+		CP.current = Color3.fromHSV(CP.h, CP.s, CP.v)
+		updateAll(CP.current)
+	end
+
+	valueContainer.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingValue = true
+			local loc = UserInputService:GetMouseLocation()
+			sampleValueFromPoint(loc.X, loc.Y)
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if not draggingValue then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local loc = input.Position or UserInputService:GetMouseLocation()
+			sampleValueFromPoint(loc.X, loc.Y)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingValue = false
+		end
+	end)
+
+	-- Eye dropper
+	local eyeConn
+	local function cancelEye()
+		CP.usingEye = false
+		if eyeConn then eyeConn:Disconnect() eyeConn = nil end
+		eye.Text = "Eye drop"
+		eye.BackgroundColor3 = Lib.Theme.Control
+	end
+	local function startEye()
+		if CP.usingEye then cancelEye() return end
+		CP.usingEye = true
+		eye.Text = "Cancel"
+		eye.BackgroundColor3 = Lib.Theme.Warn
+		eyeConn = RunService.RenderStepped:Connect(function()
+			if not CP.usingEye then return end
+			local pos = UserInputService:GetMouseLocation()
+			local guiElements = modal:GetGuiObjectsAtPosition(pos.X, pos.Y - getTopbarInsetHeight())
+			local found
+			if guiElements and guiElements[1] then
+				for _,g in ipairs(guiElements) do
+					if g:IsA("GuiObject") and g.BackgroundTransparency < 1 then
+						found = g.BackgroundColor3
+						break
+					end
+				end
+			end
+			if not found then
+				local cam = workspace.CurrentCamera
+				if cam then
+					local ray = cam:ScreenPointToRay(pos.X, pos.Y - getTopbarInsetHeight())
+					local res = workspace:Raycast(ray.Origin, ray.Direction * 500)
+					if res and res.Instance and res.Instance:IsA("BasePart") then
+						found = res.Instance.Color
+					end
+				end
+			end
+			if found then
+				CP.current = found
+				CP.h, CP.s, CP.v = CP.current:ToHSV()
+				updateAll(CP.current)
+			end
+		end)
+		local stopConn
+		stopConn = UserInputService.InputEnded:Connect(function(i)
+			if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+				if stopConn then stopConn:Disconnect() stopConn = nil end
+				cancelEye()
+			end
+		end)
+	end
+	eye.Activated:Connect(function() if CP.usingEye then cancelEye() else startEye() end end)
+
+	-- Numeric boxes focus lost handlers
+	local function safeNum(n) return tonumber(n) or 0 end
+	local function rgbApply()
+		local r = math.clamp(math.floor(safeNum(rBox.Text)+0.5),0,255)
+		local g = math.clamp(math.floor(safeNum(gBox.Text)+0.5),0,255)
+		local b = math.clamp(math.floor(safeNum(bBox.Text)+0.5),0,255)
+		local c = Color3.fromRGB(r,g,b)
+		CP.current = c
+		CP.h,CP.s,CP.v = c:ToHSV()
+		updateAll(c)
+	end
+	rBox.FocusLost:Connect(function() pcall(rgbApply) end)
+	gBox.FocusLost:Connect(function() pcall(rgbApply) end)
+	bBox.FocusLost:Connect(function() pcall(rgbApply) end)
+
+	hueBox.FocusLost:Connect(function()
+		local val = math.clamp(math.floor(safeNum(hueBox.Text)+0.5),0,359)
+		CP.h = val/359
+		CP.current = Color3.fromHSV(CP.h,CP.s,CP.v)
+		updateAll(CP.current)
+	end)
+	satBox.FocusLost:Connect(function()
+		local val = math.clamp(math.floor(safeNum(satBox.Text)+0.5),0,255)/255
+		CP.s = val
+		CP.current = Color3.fromHSV(CP.h,CP.s,CP.v)
+		updateAll(CP.current)
+	end)
+	valBox.FocusLost:Connect(function()
+		local val = math.clamp(math.floor(safeNum(valBox.Text)+0.5),0,255)/255
+		CP.v = val
+		CP.current = Color3.fromHSV(CP.h,CP.s,CP.v)
+		updateAll(CP.current)
+	end)
+
+	hexBox.FocusLost:Connect(function()
+		local txt = tostring(hexBox.Text or ""):gsub("#",""):gsub("%s+","")
+		if #txt == 6 then
+			local ok, r = pcall(function() return tonumber(txt:sub(1,2),16) end)
+			local ok2, g = pcall(function() return tonumber(txt:sub(3,4),16) end)
+			local ok3, b = pcall(function() return tonumber(txt:sub(5,6),16) end)
+			if r and g and b then
+				local c = Color3.fromRGB(r,g,b)
+				CP.current = c
+				CP.h,CP.s,CP.v = c:ToHSV()
+				updateAll(c)
+			else
+				updateAll(CP.current)
+			end
+		else
+			updateAll(CP.current)
+		end
+	end)
+
+	-- OK/Cancel
+	ok.Activated:Connect(function()
+		if CP.usingEye then return end
+		if type(onApply) == "function" then
+			pcall(function() onApply(CP.current) end)
+		end
+		modal:Destroy()
+	end)
+	cancel.Activated:Connect(function()
+		modal:Destroy()
+	end)
+
+	-- Prevent clicks passing: overlay is Active true and covers screen.
+	overlay.InputBegan:Connect(function(input) end)
+
+	-- expose modal reference in case needed
+	return modal
+end
+
+-- Register Color control that opens the popup
+-- We'll implement this in the Channel control creation below
+
+-- == API: Window / Server / Channel ==
+-- Keep simple structures storing UI state (Flags etc.)
+function Lib:Window(title, subtitle)
+	local Window = {}
+	Window.Flags = {}
+	Window._tabs = {}
+
+	function Window:Server(name, icon)
+		local Tab = {}
+		Tab._sections = {}
+		function Tab:AddSection(sectionName, side)
+			side = side or "Left"
+			local section = {}
+			-- Create a visual container in a base window frame lazily on Init
+			section._name = sectionName
+			section._side = side
+			section._controls = {}
+			function section:AddButton(label, opts)
+				opts = opts or {}
+				local control = {type="Button", label=label, opts=opts}
+				table.insert(self._controls, control)
+				return control
+			end
+			function section:AddToggle(label, opts)
+				opts = opts or {}
+				local control = {type="Toggle", label=label, opts=opts}
+				table.insert(self._controls, control)
+				Window.Flags[opts.Flag or label] = opts.Default or false
+				return control
+			end
+			function section:AddBind(label, opts)
+				opts = opts or {}
+				local control = {type="Bind", label=label, opts=opts}
+				table.insert(self._controls, control)
+				Window.Flags[opts.Flag or label] = opts.Key or opts.Default or Enum.KeyCode.Unknown
+				return control
+			end
+			function section:AddSlider(label, opts)
+				opts = opts or {}
+				local control = {type="Slider", label=label, opts=opts}
+				table.insert(self._controls, control)
+				Window.Flags[opts.Flag or label] = opts.Value or opts.Min or 0
+				return control
+			end
+			function section:AddList(label, opts)
+				opts = opts or {}
+				local control = {type="List", label=label, opts=opts}
+				table.insert(self._controls, control)
+				Window.Flags[opts.Flag or label] = opts.Value or (opts.Values and opts.Values[1])
+				return control
+			end
+			function section:AddColor(label, opts)
+				opts = opts or {}
+				local control = {type="Color", label=label, opts=opts}
+				table.insert(self._controls, control)
+				Window.Flags[opts.Flag or label] = opts.Color or Color3.fromRGB(255, 60, 60)
+				return control
+			end
+			function section:AddTextBox(label, opts)
+				opts = opts or {}
+				local control = {type="TextBox", label=label, opts=opts}
+				table.insert(self._controls, control)
+				Window.Flags[opts.Flag or label] = opts.Value or ""
+				return control
+			end
+			function section:AddSeparator()
+				local control = {type="Separator"}
+				table.insert(self._controls, control)
+				return control
+			end
+			table.insert(Tab._sections, section)
+			return section
+		end
+
+		-- convenience Channel wrapper to match SumoFacade style
+		function Tab:Channel(sectionName, side)
+			local sec = Tab:AddSection(sectionName, side)
+			local Channel = {}
+
+			function Channel:Button(label, optsOrCb)
+				local opts = type(optsOrCb) == "function" and {Callback = optsOrCb} or (optsOrCb or {})
+				return sec:AddButton(label, opts)
+			end
+			function Channel:Toggle(label, opts)
+				return sec:AddToggle(label, opts)
+			end
+			function Channel:Bind(label, opts)
+				return sec:AddBind(label, opts)
+			end
+			function Channel:Slider(label, opts)
+				return sec:AddSlider(label, opts)
+			end
+			function Channel:List(label, opts)
+				return sec:AddList(label, opts)
+			end
+			function Channel:Color(label, opts)
+				return sec:AddColor(label, opts)
+			end
+			function Channel:TextBox(label, opts)
+				return sec:AddTextBox(label, opts)
+			end
+			function Channel:Seperator()
+				return sec:AddSeparator()
+			end
+			return Channel
+		end
+
+		table.insert(Window._tabs, Tab)
+		return Tab
+	end
+
+	function Window:Init(title, icon, extra)
+		-- Build visual UI in PlayerGui
+		-- Root window frame
+		local container = new("Frame", {Parent = rootScreenGui, Size = UDim2.new(0.9,0,0.8,0), Position = UDim2.fromScale(0.05,0.1), BackgroundColor3 = Lib.Theme.Background, BorderSizePixel = 0})
+		addUICorner(container, 12)
+		addUIStroke(container, Lib.Theme.Stroke, 1, 0.6)
+
+		local header = new("Frame", {Parent = container, Size = UDim2.new(1,0,0,40), BackgroundTransparency = 1})
+		local titleLbl = new("TextLabel", {Parent = header, Text = title or "Window", BackgroundTransparency = 1, Font = FONT_B, TextSize = 18, TextColor3 = Lib.Theme.Text, Position = UDim2.new(0,12,0,6)})
+		local closeBtn = new("TextButton", {Parent = header, Text = "X", Size = UDim2.new(0,36,0,28), Position = UDim2.new(1,-44,0,6), BackgroundColor3 = Lib.Theme.Control, Font = FONT_B, TextSize = 14, TextColor3 = Lib.Theme.Text})
+		addUICorner(closeBtn, 6)
+		connectButton(closeBtn, function() container:Destroy() end)
+
+		-- Create left and right columns
+		local leftCol = new("Frame",{Parent = container, Size = UDim2.new(0.5, -12, 1, -56), Position = UDim2.new(0,12,0,48), BackgroundTransparency = 1})
+		local rightCol = new("Frame",{Parent = container, Size = UDim2.new(0.5, -12, 1, -56), Position = UDim2.new(0.5,12,0,48), BackgroundTransparency = 1})
+
+		-- Iterate through tabs/sections and create sections
+		local function buildSectionVisual(secData, parent)
+			local sframe = new("Frame", {Parent = parent, Size = UDim2.new(1,0,0,140), BackgroundColor3 = Lib.Theme.Panel, BorderSizePixel = 0})
+			addUICorner(sframe, 8)
+			addUIStroke(sframe, Lib.Theme.Stroke, 1, 0.5)
+			local tit = new("TextLabel", {Parent = sframe, Text = secData._name or "Section", BackgroundTransparency = 1, Font = FONT_B, TextSize = 14, TextColor3 = Lib.Theme.Text, Position = UDim2.new(0,8,0,6)})
+			local contentY = 36
+			for _, control in ipairs(secData._controls) do
+				local t = control.type
+				if t == "Button" then
+					local b = new("TextButton", {Parent = sframe, Text = control.label, Size = UDim2.new(1,-16,0,28), Position = UDim2.new(0,8,0,contentY), BackgroundColor3 = Lib.Theme.Control, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text})
+					addUICorner(b, 6)
+					addUIStroke(b, Lib.Theme.Stroke, 1, 0.4)
+					connectButton(b, function() if control.opts and control.opts.Callback then pcall(function() control.opts.Callback() end) end end)
+					contentY = contentY + 34
+				elseif t == "Toggle" then
+					local container = new("Frame", {Parent = sframe, Size = UDim2.new(1,-16,0,28), Position = UDim2.new(0,8,0,contentY), BackgroundTransparency = 1})
+					local lbl = new("TextLabel", {Parent = container, Text = control.label, BackgroundTransparency = 1, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text, Size = UDim2.new(0.7,0,1,0), TextXAlignment = Enum.TextXAlignment.Left})
+					local toggle = new("TextButton", {Parent = container, Size = UDim2.new(0.28,0,1,0), Position = UDim2.new(0.72,0,0,0), BackgroundColor3 = control.opts.State and Lib.Theme.Accent or Lib.Theme.Control, Text = control.opts.State and "On" or "Off", Font = FONT_B, TextSize = 14, TextColor3 = Lib.Theme.Text})
+					addUICorner(toggle, 6)
+					addUIStroke(toggle, Lib.Theme.Stroke, 1, 0.4)
+					connectButton(toggle, function()
+						control.opts.State = not control.opts.State
+						toggle.BackgroundColor3 = control.opts.State and Lib.Theme.Accent or Lib.Theme.Control
+						toggle.Text = control.opts.State and "On" or "Off"
+						if control.opts.Callback then pcall(function() control.opts.Callback(control.opts.State) end) end
+						Window.Flags[control.opts.Flag or control.label] = control.opts.State
+					end)
+					contentY = contentY + 34
+				elseif t == "Bind" then
+					local cont = new("Frame", {Parent = sframe, Size = UDim2.new(1,-16,0,28), Position = UDim2.new(0,8,0,contentY)})
+					local lbl = new("TextLabel", {Parent = cont, Text = control.label, BackgroundTransparency = 1, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text, Size = UDim2.new(0.6,0,1,0)})
+					local btn = new("TextButton", {Parent = cont, Text = tostring(control.opts.Key or control.opts.Default or Enum.KeyCode.Unknown), Size = UDim2.new(0.38,0,1,0), Position = UDim2.new(0.62,0,0,0), BackgroundColor3 = Lib.Theme.Control, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text})
+					addUICorner(btn, 6)
+					addUIStroke(btn, Lib.Theme.Stroke, 1, 0.4)
+					connectButton(btn, function()
+						-- waiting for key press
+						btn.Text = "Press Key..."
+						local conn
+						conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+							if input.UserInputType == Enum.UserInputType.Keyboard then
+								control.opts.Key = input.KeyCode
+								btn.Text = tostring(input.KeyCode)
+								if control.opts.Callback then pcall(function() control.opts.Callback(input.KeyCode) end) end
+								Window.Flags[control.opts.Flag or control.label] = input.KeyCode
+								conn:Disconnect()
+							end
+						end)
+					end)
+					contentY = contentY + 34
+				elseif t == "Slider" then
+					local min = control.opts.Min or 0
+					local max = control.opts.Max or 100
+					local val = control.opts.Value or min
+					local cont = new("Frame", {Parent = sframe, Size = UDim2.new(1,-16,0,36), Position = UDim2.new(0,8,0,contentY)})
+					local lbl = new("TextLabel", {Parent = cont, Text = ("%s: %s%s"):format(control.label, tostring(val), control.opts.Suffix or ""), BackgroundTransparency = 1, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text, Size = UDim2.new(1,0,0,18)})
+					local bar = new("Frame", {Parent = cont, BackgroundColor3 = Lib.Theme.Panel2, Size = UDim2.new(1,0,0,10), Position = UDim2.new(0,0,0,20)})
+					addUICorner(bar, 6)
+					local fill = new("Frame", {Parent = bar, BackgroundColor3 = Lib.Theme.Accent, Size = UDim2.new((val-min)/(max-min),0,1,0)})
+					addUICorner(fill, 6)
+					-- input handling
+					bar.InputBegan:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+							local function updateFrom(inputPos)
+								local x = inputPos.X - bar.AbsolutePosition.X
+								local rel = math.clamp(x / bar.AbsoluteSize.X, 0, 1)
+								local newVal = min + rel * (max - min)
+								val = newVal
+								fill.Size = UDim2.new(rel,0,1,0)
+								lbl.Text = ("%s: %d%s"):format(control.label, math.floor(newVal+0.5), control.opts.Suffix or "")
+								if control.opts.Callback then pcall(function() control.opts.Callback(newVal) end) end
+								Window.Flags[control.opts.Flag or control.label] = newVal
+							end
+							local conn
+							conn = UserInputService.InputChanged:Connect(function(move)
+								if move.UserInputType == Enum.UserInputType.MouseMovement or move.UserInputType == Enum.UserInputType.Touch then
+									updateFrom(move.Position or UserInputService:GetMouseLocation())
+								end
+							end)
+							local upConn
+							upConn = UserInputService.InputEnded:Connect(function(i)
+								if i.UserInputType == input.UserInputType then
+									conn:Disconnect()
+									upConn:Disconnect()
+								end
+							end)
+						end
+					end)
+					contentY = contentY + 40
+				elseif t == "List" then
+					local cont = new("Frame", {Parent = sframe, Size = UDim2.new(1,-16,0,28), Position = UDim2.new(0,8,0,contentY)})
+					local lbl = new("TextLabel", {Parent = cont, Text = control.label, BackgroundTransparency = 1, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text, Size = UDim2.new(0.6,0,1,0)})
+					local dd = new("TextButton", {Parent = cont, Text = tostring(control.opts.Value or (control.opts.Values and control.opts.Values[1]) or ""), Size = UDim2.new(0.38,0,1,0), Position = UDim2.new(0.62,0,0,0), BackgroundColor3 = Lib.Theme.Control, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text})
+					addUICorner(dd, 6)
+					addUIStroke(dd, Lib.Theme.Stroke, 1, 0.4)
+					connectButton(dd, function()
+						-- create dropdown modal
+						local modal = new("ScreenGui", {Parent = playerGui, ResetOnSpawn = false, DisplayOrder = 1100})
+						pcall(function() modal.IgnoreGuiInset = true end)
+						local overlay = new("TextButton", {Parent = modal, Size = UDim2.fromScale(1,1), BackgroundColor3 = Color3.new(0,0,0), BackgroundTransparency = 0.55, Text = "", AutoButtonColor = false})
+						overlay.Active = true
+						local box = new("Frame", {Parent = overlay, Size = UDim2.new(0, 280, 0, math.min(34 * (#control.opts.Values or 1)+8, 300)), AnchorPoint = Vector2.new(0.5,0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = Lib.Theme.Panel})
+						addUICorner(box, 8)
+						addUIStroke(box, Lib.Theme.Stroke, 1, 0.5)
+						for i,v in ipairs(control.opts.Values or {}) do
+							local item = new("TextButton", {Parent = box, Text = tostring(v), Size = UDim2.new(1,-12,0,30), Position = UDim2.new(0,6,0,(i-1)*32+6), BackgroundColor3 = Lib.Theme.Control, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text})
+							addUICorner(item, 6)
+							connectButton(item, function()
+								control.opts.Value = v
+								Window.Flags[control.opts.Flag or control.label] = v
+								if control.opts.Callback then pcall(function() control.opts.Callback(v) end) end
+								modal:Destroy()
+								dd.Text = tostring(v)
+							end)
+						end
+						overlay.InputBegan:Connect(function() modal:Destroy() end)
+					end)
+					contentY = contentY + 34
+				elseif t == "Color" then
+					local cont = new("Frame", {Parent = sframe, Size = UDim2.new(1,-16,0,40), Position = UDim2.new(0,8,0,contentY)})
+					local lbl = new("TextLabel", {Parent = cont, Text = control.label, BackgroundTransparency = 1, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text, Size = UDim2.new(0.6,0,1,0)})
+					local col = new("Frame", {Parent = cont, Size = UDim2.new(0.28,0,0.66,0), Position = UDim2.new(0.72,0,0.17,0), BackgroundColor3 = control.opts.Color or Color3.fromRGB(255,60,60)})
+					addUICorner(col, 6)
+					addUIStroke(col, Lib.Theme.Stroke, 1, 0.4)
+					connectButton(col, function()
+						-- open color picker
+						createColorPickerPopup(playerGui, control.opts.Color or Color3.fromRGB(255,60,60), function(newColor)
+							control.opts.Color = newColor
+							col.BackgroundColor3 = newColor
+							Window.Flags[control.opts.Flag or control.label] = newColor
+							if control.opts.Callback then pcall(function() control.opts.Callback(newColor) end) end
+						end)
+					end)
+					contentY = contentY + 44
+				elseif t == "TextBox" then
+					local cont = new("Frame", {Parent = sframe, Size = UDim2.new(1,-16,0,34), Position = UDim2.new(0,8,0,contentY)})
+					local lbl = new("TextLabel", {Parent = cont, Text = control.label, BackgroundTransparency = 1, Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text, Size = UDim2.new(0.3,0,1,0)})
+					local tb = new("TextBox", {Parent = cont, Size = UDim2.new(0.68,0,1,0), Position = UDim2.new(0.32,6,0,0), BackgroundColor3 = Lib.Theme.Panel2, Text = control.opts.Value or "", Font = FONT, TextSize = 14, TextColor3 = Lib.Theme.Text})
+					addUICorner(tb, 6)
+					addUIStroke(tb, Lib.Theme.Stroke, 1, 0.5)
+					tb.FocusLost:Connect(function()
+						Window.Flags[control.opts.Flag or control.label] = tb.Text
+						if control.opts.Callback then pcall(function() control.opts.Callback(tb.Text) end) end
+					end)
+					contentY = contentY + 40
+				elseif t == "Separator" then
+					local line = new("Frame", {Parent = sframe, Size = UDim2.new(1,-16,0,6), Position = UDim2.new(0,8,0,contentY), BackgroundTransparency = 1})
+					local bar = new("Frame", {Parent = line, Size = UDim2.new(1,0,0,2), Position = UDim2.new(0,0,0,2), BackgroundColor3 = Lib.Theme.Stroke})
+					addUICorner(bar, 2)
+					contentY = contentY + 12
+				end
+			end
+			-- ensure minimum height
+			sframe.Size = UDim2.new(1,0,0, math.max(contentY + 8, 80))
+			return sframe
+		end
+
+		-- Build left and right from Window._tabs structure: flatten sections into left and right columns
+		local leftY, rightY = 8, 8
+		for _,tab in ipairs(Window._tabs) do
+			for _,sec in ipairs(tab._sections) do
+				local containerCol = (sec._side == "Right") and rightCol or leftCol
+				local svis = buildSectionVisual(sec, containerCol)
+				svis.Position = UDim2.new(0,8,0,leftY)
+				leftY = leftY + svis.Size.Y.Offset + 12
+				-- if put on right, adjust rightY instead (we simplified: treat sequential)
+			end
+		end
+	end
+
+	function Window:Flags()
+		return self.Flags
+	end
+
+	function Window:Toggle() end
+	function Window:Unload()
+		-- not implemented (window created with Init can be closed by X)
+	end
+
+	return Window
+end
+
+-- Expose library to global
+return Lib
