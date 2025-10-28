@@ -78,7 +78,7 @@ local FONT_B = Enum.Font.GothamBold
 local RoundedUI = {}
 
 -- Internal: Color picker popup
-
+local M = {}
 local function createColorPickerPopup(rootGui, startColor, onApply)
 	-- Services
 	local Players = game:GetService("Players")
@@ -776,6 +776,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 	}
 end
 
+M.createColorPickerPopup = createColorPickerPopup
+return M
 
 
 -- API: Window -> Tabs -> UnderSections -> Controls
