@@ -138,20 +138,32 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         NumberSequenceKeypoint.new(1,1)
     }
     whiteGrad.Rotation = 0
-    whiteGrad.Parent = svFrame
+        whiteGrad.Parent = svFrame
 
-    -- чёрный → прозрачный градиент (сверху вниз)
-    local blackGrad = Instance.new("UIGradient")
+    -- белый → прозрачный (слева направо)
+    whiteGrad.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.new(1,1,1)),
+        ColorSequenceKeypoint.new(1, Color3.new(1,1,1))
+    }
+    whiteGrad.Transparency = NumberSequence.new{
+        NumberSequenceKeypoint.new(0, 0), -- слева белый непрозрачный
+        NumberSequenceKeypoint.new(1, 1)  -- справа прозрачный
+    }
+    whiteGrad.Rotation = 0
+
+    -- чёрный → прозрачный (сверху вниз)
     blackGrad.Color = ColorSequence.new{
         ColorSequenceKeypoint.new(0, Color3.new(0,0,0)),
         ColorSequenceKeypoint.new(1, Color3.new(0,0,0))
     }
     blackGrad.Transparency = NumberSequence.new{
-        NumberSequenceKeypoint.new(0,1),
-        NumberSequenceKeypoint.new(1,0)
+        NumberSequenceKeypoint.new(0, 0), -- сверху чёрный непрозрачный
+        NumberSequenceKeypoint.new(1, 1)  -- снизу прозрачный
     }
     blackGrad.Rotation = 90
+
     blackGrad.Parent = svFrame
+
 
     -- индикатор выбора
     local svIndicator = create("Frame", {
@@ -196,9 +208,10 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     -- предпросмотр
     local preview = create("Frame", {
-        Size = UDim2.new(1,0,0,30),
-        Position = UDim2.new(0,0,0,310),
+                Size = UDim2.new(1,0,0,30),
+        Position = UDim2.new(0, 0, 1, -75), -- разместить полосу над кнопками
         BackgroundColor3 = Color3.fromHSV(H,S,V),
+
         ZIndex = 202,
     }, {})
     preview.Parent = popup
