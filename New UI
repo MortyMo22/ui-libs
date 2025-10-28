@@ -776,6 +776,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 	}
 end
 
+end
 M.createColorPickerPopup = createColorPickerPopup
 return M
 
