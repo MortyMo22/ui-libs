@@ -776,6 +776,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 	}
 end
 
+local RoundedUI = {}
 RoundedUI.createColorPickerPopup = createColorPickerPopup
 return RoundedUI
 
