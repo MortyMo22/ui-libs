@@ -1927,4 +1927,6 @@ end
     return api
 end
 
+UI.createColorPickerPopup = createColorPickerPopup
+
 return RoundedUI
