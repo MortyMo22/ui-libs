@@ -368,12 +368,13 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addCorner(preview, 10)
     addStroke(preview, Theme.stroke, 2, 0.3)
 
-    -- Info panel (позиция внизу под content, чтобы кнопки были ниже)
+    -- Info panel (позиция внизу под content, динамическая высота и отступ)
+    local infoPanelHeight = 96 -- можно настроить (уменьшил с 100 для лучшего отступа)
+    local infoPanelY = pickerSize + 12
     local infoPanel = create("Frame", {
         Name = "InfoPanel",
-        Size = UDim2.new(1, -24, 0, 100),
-        -- позиционируем относительно pickerSize чтобы не накладывалось на кнопки
-        Position = UDim2.new(0, 12, 0, pickerSize + 12),
+        Size = UDim2.new(1, -24, 0, infoPanelHeight),
+        Position = UDim2.new(0, 12, 0, infoPanelY),
         BackgroundColor3 = Theme.panel2,
         ZIndex = 202,
     }, {})
@@ -381,6 +382,7 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addCorner(infoPanel, 10)
     addStroke(infoPanel, Theme.stroke, 1, 0.4)
     addPadding(infoPanel, 10)
+
 
 
     -- RGB Inputs
@@ -451,18 +453,20 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addCorner(hexInput, 6)
     addStroke(hexInput, Theme.stroke, 1, 0.4)
 
-    -- Buttons container: поднимаем поверх infoPanel, даём padding
+    -- Buttons container: помещаем сразу под infoPanel с отступом
     local btnHeight = 38
+    local btnGap = 12 -- отступ между infoPanel и кнопками
+    local buttonsY = infoPanelY + infoPanelHeight + btnGap
     local buttonContainer = create("Frame", {
         Name = "Buttons",
         Size = UDim2.new(1, -24, 0, btnHeight),
-        -- позиция: чуть выше нижней границы, с учётом отступа 12
-        Position = UDim2.new(0, 12, 1, -12 - btnHeight),
+        Position = UDim2.new(0, 12, 0, buttonsY),
         AnchorPoint = Vector2.new(0, 0),
         BackgroundTransparency = 1,
         ZIndex = 210,
     }, {})
     buttonContainer.Parent = popup
+
 
 
     local cancelBtn = create("TextButton", {
@@ -472,7 +476,7 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
         Text = "Cancel",
         TextColor3 = Theme.text,
         Font = FONT_B,
-        TextSize = 16,
+        TextSize = math.clamp(16, 12, 16),
         ZIndex = 203,
     }, {})
     cancelBtn.Parent = buttonContainer
@@ -487,7 +491,7 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
         Text = "Apply",
         TextColor3 = Theme.text,
         Font = FONT_B,
-        TextSize = 16,
+        TextSize = math.clamp(16, 12, 16),
         ZIndex = 203,
     }, {})
     applyBtn.Parent = buttonContainer
