@@ -167,10 +167,24 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     }, {})
     title.Parent = titleBar
 
-    -- Content container
+    -- Content container + pickerSize (подстраивается под масштаб popup)
+    -- вычисляем локальный scaleRatio относительно базовой высоты 440
+    local scaleRatio = 1
+    do
+        local baseHeightRef = 440
+        -- baseH уже пересчитан выше при масштабировании popup; если нет, fallback на baseHeightRef
+        if baseH and type(baseH) == "number" then
+            scaleRatio = baseH / baseHeightRef
+            if scaleRatio <= 0 then scaleRatio = 1 end
+        end
+    end
+
+    local pickerSize = math.max(96, math.floor(240 * scaleRatio)) -- минимум 96 чтобы не совсем сдулся
+    local contentHeight = pickerSize
+
     local content = create("Frame", {
         Name = "Content",
-        Size = UDim2.new(1, -24, 0, 240),
+        Size = UDim2.new(1, -24, 0, contentHeight),
         Position = UDim2.new(0, 12, 0, 52),
         BackgroundTransparency = 1,
         ZIndex = 202,
@@ -184,7 +198,6 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     end
 
     -- ===== MAIN COLOR PICKER SQUARE =====
-    local pickerSize = 240
     local pickerFrame = create("Frame", {
         Name = "ColorPicker",
         Size = UDim2.new(0, pickerSize, 0, pickerSize),
@@ -192,11 +205,12 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         BackgroundColor3 = Color3.fromHSV(H, 1, 1),
         BorderSizePixel = 0,
         ZIndex = 203,
-        ClipsDescendants = false,
+        ClipsDescendants = true,
     }, {})
     pickerFrame.Parent = content
     addCorner(pickerFrame, 10)
     addStroke(pickerFrame, Theme.stroke, 2, 0.3)
+
 
     -- White to transparent gradient (Saturation)
     local satGradient = create("Frame", {
@@ -369,8 +383,23 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addStroke(preview, Theme.stroke, 2, 0.3)
 
     -- Info panel (позиция внизу под content, динамическая высота и отступ)
-    local infoPanelHeight = 105 -- можно настроить (уменьшил с 100 для лучшего отступа)
+    local infoPanelHeight = 90
     local infoPanelY = pickerSize + 12
+
+    -- safety: если суммарные элементы не помещаются в popup, уменьшаем infoPanelHeight
+    do
+        local btnHeight = 38
+        local btnGap = 12
+        local totalNeeded = infoPanelY + infoPanelHeight + btnGap + btnHeight + 12 -- +12 bottom padding
+        if totalNeeded > baseH then
+            local overflow = totalNeeded - baseH
+            local reduceBy = math.min( math.floor(overflow + 4), infoPanelHeight - 40 ) -- минимум 40px для полей
+            if reduceBy > 0 then
+                infoPanelHeight = infoPanelHeight - reduceBy
+            end
+        end
+    end
+
     local infoPanel = create("Frame", {
         Name = "InfoPanel",
         Size = UDim2.new(1, -24, 0, infoPanelHeight),
