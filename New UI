@@ -272,31 +272,71 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     -- ИСПРАВЛЕННЫЙ ГРАДИЕНТ - полный спектр цветов
 -- ПРАВИЛЬНЫЙ ГРАДИЕНТ - полный спектр RGB цветов
+-- ===== HUE SLIDER (Vertical, right side) =====
+local sliderWidth = 24
 local hueSlider = create("Frame", {
     Name = "HueSlider",
     Size = UDim2.new(0, sliderWidth, 0, pickerSize),
     Position = UDim2.new(0, pickerSize + 8, 0, 0),
-    BackgroundTransparency = 1, -- ВАЖНО: фон прозрачный
+    BackgroundTransparency = 1,   -- outer is just a container
     BorderSizePixel = 0,
     ZIndex = 203,
-})
+}, {})
 hueSlider.Parent = content
 addCorner(hueSlider, 8)
 addStroke(hueSlider, Theme.stroke, 2, 0.3)
 
--- Градиент
+-- inner fill surface actually showing the gradient
+local hueFill = create("Frame", {
+    Name = "HueFill",
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    Size = UDim2.new(1, -2, 1, -2),
+    BackgroundColor3 = Color3.new(1, 1, 1), -- non-transparent surface
+    BackgroundTransparency = 0,
+    BorderSizePixel = 0,
+    ZIndex = 203,
+}, {})
+hueFill.Parent = hueSlider
+addCorner(hueFill, 8)
+
+-- full spectrum gradient, vertical
 local hueGrad = Instance.new("UIGradient")
 hueGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0.000, Color3.new(1, 0, 0)), -- Красный
-    ColorSequenceKeypoint.new(0.166, Color3.new(1, 1, 0)), -- Жёлтый
-    ColorSequenceKeypoint.new(0.333, Color3.new(0, 1, 0)), -- Зелёный
-    ColorSequenceKeypoint.new(0.500, Color3.new(0, 1, 1)), -- Циан
-    ColorSequenceKeypoint.new(0.666, Color3.new(0, 0, 1)), -- Синий
-    ColorSequenceKeypoint.new(0.833, Color3.new(1, 0, 1)), -- Маджента
-    ColorSequenceKeypoint.new(1.000, Color3.new(1, 0, 0)), -- Красный (замыкание)
+    ColorSequenceKeypoint.new(0.000, Color3.new(1, 0, 0)),  -- Red
+    ColorSequenceKeypoint.new(0.166, Color3.new(1, 0, 1)),  -- Magenta
+    ColorSequenceKeypoint.new(0.333, Color3.new(0, 0, 1)),  -- Blue
+    ColorSequenceKeypoint.new(0.500, Color3.new(0, 1, 1)),  -- Cyan
+    ColorSequenceKeypoint.new(0.666, Color3.new(0, 1, 0)),  -- Green
+    ColorSequenceKeypoint.new(0.833, Color3.new(1, 1, 0)),  -- Yellow
+    ColorSequenceKeypoint.new(1.000, Color3.new(1, 0, 0)),  -- Red (close loop)
 })
 hueGrad.Rotation = 90
-hueGrad.Parent = hueSlider
+hueGrad.Parent = hueFill
+
+-- click target (transparent)
+local hueButton = create("TextButton", {
+    Name = "HueButton",
+    Size = UDim2.fromScale(1, 1),
+    BackgroundTransparency = 1,
+    Text = "",
+    ZIndex = 204,
+}, {})
+hueButton.Parent = hueSlider
+
+-- cursor above the fill
+local hueCursor = create("Frame", {
+    Name = "HueCursor",
+    Size = UDim2.new(1, 6, 0, 6),
+    Position = UDim2.new(0.5, 0, 0, 0),
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundColor3 = Color3.new(1, 1, 1),
+    BorderSizePixel = 0,
+    ZIndex = 205,
+}, {})
+hueCursor.Parent = hueSlider
+addCorner(hueCursor, 3)
+addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
 
     local hueButton = create("TextButton", {
