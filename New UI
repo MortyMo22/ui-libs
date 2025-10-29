@@ -95,29 +95,53 @@ local RoundedUI = {}
 -- Fixed Color Picker - correct hue gradient and preview placement
 
 local function createColorPickerPopup(rootGui, startColor, onApply)
-    -- Overlay
+    -- Overlay (полное затемнение, покрывает safe area)
     local overlay = create("TextButton", {
         Name = "ColorPickerOverlay",
+        Position = UDim2.new(0, 0, 0, 0),
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.4,
+        BackgroundTransparency = 0.45,
         Text = "",
         ZIndex = 200,
         AutoButtonColor = false,
     }, {})
     overlay.Parent = rootGui
+    overlay.ZIndex = 200
+    overlay.Modal = true
 
-    -- Main popup window
+
+    -- Main popup window (с учётом верхнего inset на мобильных)
+    local GuiService = game:GetService("GuiService")
+    local Camera = workspace.CurrentCamera
+    local viewportY = (Camera and Camera.ViewportSize and Camera.ViewportSize.Y) or 720
+    local topInset = 0
+    if GuiService and GuiService.GetGuiInset then
+        local insetVec = GuiService:GetGuiInset()
+        topInset = insetVec.Y or 0
+    end
+
+    local baseW, baseH = 340, 440
+    -- если экран по высоте меньше базового, масштабируем popup чтобы не выходил за экран
+    if viewportY < baseH + 60 then
+        local ratio = (viewportY - 60) / baseH
+        if ratio < 0.6 then ratio = 0.6 end
+        baseW = math.floor(baseW * ratio)
+        baseH = math.floor(baseH * ratio)
+    end
+
     local popup = create("Frame", {
         Name = "ColorPickerWindow",
-        Size = UDim2.new(0, 340, 0, 440),
-        Position = UDim2.new(0.5, -170, 0.5, -220),
+        Size = UDim2.new(0, baseW, 0, baseH),
+        -- центрируем и сдвигаем вниз на половину inset, чтобы не перекрываться системной панелью
+        Position = UDim2.new(0.5, -baseW/2, 0.5, -baseH/2 + math.floor(topInset * 0.5)),
         BackgroundColor3 = Theme.bg,
         ZIndex = 201,
     }, {})
     popup.Parent = overlay
     addCorner(popup, 12)
     addStroke(popup, Theme.stroke, 2, 0.4)
+
 
     -- Title bar
     local titleBar = create("Frame", {
@@ -327,27 +351,9 @@ addCorner(hueCursor, 3)
 addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
 
-    local hueButton = create("TextButton", {
-        Name = "HueButton",
-        Size = UDim2.fromScale(1, 1),
-        BackgroundTransparency = 1,
-        Text = "",
-        ZIndex = 204,
-    }, {})
-    hueButton.Parent = hueSlider
 
-    local hueCursor = create("Frame", {
-        Name = "HueCursor",
-        Size = UDim2.new(1, 6, 0, 6),
-        Position = UDim2.new(0.5, 0, 0, 0),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 0,
-        ZIndex = 205,
-    }, {})
-    hueCursor.Parent = hueSlider
-    addCorner(hueCursor, 3)
-    addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
+
+
 
     -- ===== COLOR PREVIEW (справа от hue slider) =====
     local preview = create("Frame", {
@@ -362,11 +368,12 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addCorner(preview, 10)
     addStroke(preview, Theme.stroke, 2, 0.3)
 
-    -- ===== INFO PANEL (RGB & HEX) =====
+    -- Info panel (позиция внизу под content, чтобы кнопки были ниже)
     local infoPanel = create("Frame", {
         Name = "InfoPanel",
         Size = UDim2.new(1, -24, 0, 100),
-        Position = UDim2.new(0, 12, 0, 304),
+        -- позиционируем относительно pickerSize чтобы не накладывалось на кнопки
+        Position = UDim2.new(0, 12, 0, pickerSize + 12),
         BackgroundColor3 = Theme.panel2,
         ZIndex = 202,
     }, {})
@@ -374,6 +381,7 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addCorner(infoPanel, 10)
     addStroke(infoPanel, Theme.stroke, 1, 0.4)
     addPadding(infoPanel, 10)
+
 
     -- RGB Inputs
     local function createNumberInput(name, yPos)
@@ -443,16 +451,19 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addCorner(hexInput, 6)
     addStroke(hexInput, Theme.stroke, 1, 0.4)
 
-    -- ===== BUTTONS =====
+    -- Buttons container: поднимаем поверх infoPanel, даём padding
+    local btnHeight = 38
     local buttonContainer = create("Frame", {
         Name = "Buttons",
-        Size = UDim2.new(1, -24, 0, 38),
-        Position = UDim2.new(0, 12, 1, -12),
-        AnchorPoint = Vector2.new(0, 1),
+        Size = UDim2.new(1, -24, 0, btnHeight),
+        -- позиция: чуть выше нижней границы, с учётом отступа 12
+        Position = UDim2.new(0, 12, 1, -12 - btnHeight),
+        AnchorPoint = Vector2.new(0, 0),
         BackgroundTransparency = 1,
-        ZIndex = 202,
+        ZIndex = 210,
     }, {})
     buttonContainer.Parent = popup
+
 
     local cancelBtn = create("TextButton", {
         Name = "CancelButton",
