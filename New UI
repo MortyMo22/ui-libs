@@ -272,18 +272,32 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     -- ИСПРАВЛЕННЫЙ ГРАДИЕНТ - полный спектр цветов
 -- ПРАВИЛЬНЫЙ ГРАДИЕНТ - полный спектр RGB цветов
+local hueSlider = create("Frame", {
+    Name = "HueSlider",
+    Size = UDim2.new(0, sliderWidth, 0, pickerSize),
+    Position = UDim2.new(0, pickerSize + 8, 0, 0),
+    BackgroundTransparency = 1, -- ВАЖНО: фон прозрачный
+    BorderSizePixel = 0,
+    ZIndex = 203,
+})
+hueSlider.Parent = content
+addCorner(hueSlider, 8)
+addStroke(hueSlider, Theme.stroke, 2, 0.3)
+
+-- Градиент
 local hueGrad = Instance.new("UIGradient")
 hueGrad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0.000, Color3.new(1, 0, 0)),     -- Красный
-    ColorSequenceKeypoint.new(0.166, Color3.new(1, 1, 0)),     -- Желтый
-    ColorSequenceKeypoint.new(0.333, Color3.new(0, 1, 0)),     -- Зеленый
-    ColorSequenceKeypoint.new(0.500, Color3.new(0, 1, 1)),     -- Циан
-    ColorSequenceKeypoint.new(0.666, Color3.new(0, 0, 1)),     -- Синий
-    ColorSequenceKeypoint.new(0.833, Color3.new(1, 0, 1)),     -- Маджента
-    ColorSequenceKeypoint.new(1.000, Color3.new(1, 0, 0)),     -- Красный (замыкание)
+    ColorSequenceKeypoint.new(0.000, Color3.new(1, 0, 0)), -- Красный
+    ColorSequenceKeypoint.new(0.166, Color3.new(1, 1, 0)), -- Жёлтый
+    ColorSequenceKeypoint.new(0.333, Color3.new(0, 1, 0)), -- Зелёный
+    ColorSequenceKeypoint.new(0.500, Color3.new(0, 1, 1)), -- Циан
+    ColorSequenceKeypoint.new(0.666, Color3.new(0, 0, 1)), -- Синий
+    ColorSequenceKeypoint.new(0.833, Color3.new(1, 0, 1)), -- Маджента
+    ColorSequenceKeypoint.new(1.000, Color3.new(1, 0, 0)), -- Красный (замыкание)
 })
 hueGrad.Rotation = 90
 hueGrad.Parent = hueSlider
+
 
     local hueButton = create("TextButton", {
         Name = "HueButton",
