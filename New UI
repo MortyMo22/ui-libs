@@ -81,13 +81,17 @@ local RoundedUI = {}
 --!strict
 -- Enhanced Color Picker Popup with HSV controls and hex input
 
+--!strict
+-- Enhanced Color Picker based on Advanced Color Picker by Viperdune
+-- Adapted for RoundedUI library
+
 local function createColorPickerPopup(rootGui, startColor, onApply)
-    -- Overlay background
+    -- Overlay
     local overlay = create("TextButton", {
         Name = "ColorPickerOverlay",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.5,
+        BackgroundTransparency = 0.4,
         Text = "",
         ZIndex = 200,
         AutoButtonColor = false,
@@ -96,23 +100,26 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     -- Main popup window
     local popup = create("Frame", {
-        Size = UDim2.new(0, 380, 0, 420),
-        Position = UDim2.new(0.5, -190, 0.5, -210),
-        BackgroundColor3 = Theme.panel,
+        Name = "ColorPickerWindow",
+        Size = UDim2.new(0, 340, 0, 440),
+        Position = UDim2.new(0.5, -170, 0.5, -220),
+        BackgroundColor3 = Theme.bg,
         ZIndex = 201,
     }, {})
     popup.Parent = overlay
     addCorner(popup, 12)
-    addStroke(popup, Theme.stroke, 2, 0.3)
+    addStroke(popup, Theme.stroke, 2, 0.4)
 
     -- Title bar
     local titleBar = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 36),
+        Name = "TitleBar",
+        Size = UDim2.new(1, 0, 0, 40),
         BackgroundColor3 = Theme.panel2,
         ZIndex = 202,
     }, {})
     titleBar.Parent = popup
     addCorner(titleBar, 12)
+    addStroke(titleBar, Theme.stroke, 1, 0.5)
 
     local title = create("TextLabel", {
         Size = UDim2.new(1, -20, 1, 0),
@@ -121,7 +128,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         Text = "Color Picker",
         TextColor3 = Theme.text,
         Font = FONT_B,
-        TextSize = 16,
+        TextSize = 18,
         TextXAlignment = Enum.TextXAlignment.Left,
         ZIndex = 203,
     }, {})
@@ -129,121 +136,125 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     -- Content container
     local content = create("Frame", {
-        Size = UDim2.new(1, -24, 1, -84),
-        Position = UDim2.new(0, 12, 0, 48),
+        Name = "Content",
+        Size = UDim2.new(1, -24, 1, -100),
+        Position = UDim2.new(0, 12, 0, 52),
         BackgroundTransparency = 1,
         ZIndex = 202,
     }, {})
     content.Parent = popup
 
-    -- Initialize HSV values
+    -- Initialize HSV
     local H, S, V = 0, 1, 1
     if startColor then
         H, S, V = startColor:ToHSV()
     end
 
-    -- === Main color picker square (Hue/Saturation) ===
-    local colorFrame = create("Frame", {
-        Size = UDim2.new(0, 280, 0, 280),
+    -- ===== MAIN COLOR PICKER SQUARE =====
+    local pickerSize = 280
+    local pickerFrame = create("Frame", {
+        Name = "ColorPicker",
+        Size = UDim2.new(0, pickerSize, 0, pickerSize),
         Position = UDim2.new(0, 0, 0, 0),
-        BackgroundColor3 = Color3.fromHSV(1, 1, 1),
-        ZIndex = 203,
+        BackgroundColor3 = Color3.fromHSV(H, 1, 1),
         BorderSizePixel = 0,
+        ZIndex = 203,
+        ClipsDescendants = false,
     }, {})
-    colorFrame.Parent = content
-    addCorner(colorFrame, 8)
-    addStroke(colorFrame, Theme.stroke, 1, 0.4)
+    pickerFrame.Parent = content
+    addCorner(pickerFrame, 10)
+    addStroke(pickerFrame, Theme.stroke, 2, 0.3)
 
-    -- Saturation gradient (white to transparent, left to right)
-    local satFrame = create("Frame", {
+    -- White to transparent gradient (Saturation)
+    local satGradient = create("Frame", {
+        Name = "SaturationGradient",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BackgroundTransparency = 0,
+        BorderSizePixel = 0,
         ZIndex = 204,
     }, {})
-    satFrame.Parent = colorFrame
-    addCorner(satFrame, 8)
+    satGradient.Parent = pickerFrame
+    addCorner(satGradient, 10)
 
     local satGrad = Instance.new("UIGradient")
     satGrad.Color = ColorSequence.new(Color3.new(1, 1, 1))
     satGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0),   -- left: white (no saturation)
-        NumberSequenceKeypoint.new(1, 1),   -- right: transparent (full saturation)
+        NumberSequenceKeypoint.new(0, 0),   -- Left: white (no saturation)
+        NumberSequenceKeypoint.new(1, 1),   -- Right: transparent (full saturation)
     })
     satGrad.Rotation = 0
-    satGrad.Parent = satFrame
+    satGrad.Parent = satGradient
 
-    -- Value gradient (transparent to black, top to bottom)
-    local valFrame = create("Frame", {
+    -- Black gradient overlay (Value)
+    local valGradient = create("Frame", {
+        Name = "ValueGradient",
         Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.new(0, 0, 0),
-        BackgroundTransparency = 1,
+        BackgroundTransparency = 0,
+        BorderSizePixel = 0,
         ZIndex = 205,
     }, {})
-    valFrame.Parent = colorFrame
-    addCorner(valFrame, 8)
+    valGradient.Parent = pickerFrame
+    addCorner(valGradient, 10)
 
     local valGrad = Instance.new("UIGradient")
     valGrad.Color = ColorSequence.new(Color3.new(0, 0, 0))
     valGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),   -- top: transparent (full value)
-        NumberSequenceKeypoint.new(1, 0),   -- bottom: black (no value)
+        NumberSequenceKeypoint.new(0, 1),   -- Top: transparent (full value)
+        NumberSequenceKeypoint.new(1, 0),   -- Bottom: black (no value)
     })
     valGrad.Rotation = 90
-    valGrad.Parent = valFrame
+    valGrad.Parent = valGradient
 
-    -- Color picker cursor
-    local colorCursor = create("Frame", {
-        Size = UDim2.new(0, 16, 0, 16),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 2,
-        BorderColor3 = Color3.new(0, 0, 0),
+    -- Invisible button for input
+    local pickerButton = create("TextButton", {
+        Name = "PickerButton",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Text = "",
         ZIndex = 206,
     }, {})
-    colorCursor.Parent = colorFrame
-    addCorner(colorCursor, 8)
+    pickerButton.Parent = pickerFrame
 
-    -- === Value slider (vertical) ===
-    local valueSlider = create("Frame", {
-        Size = UDim2.new(0, 32, 0, 280),
-        Position = UDim2.new(0, 292, 0, 0),
+    -- Selection cursor
+    local cursor = create("Frame", {
+        Name = "Cursor",
+        Size = UDim2.new(0, 20, 0, 20),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundTransparency = 1,
+        ZIndex = 207,
+    }, {})
+    cursor.Parent = pickerFrame
+
+    local cursorOuter = create("Frame", {
+        Size = UDim2.fromScale(1, 1),
         BackgroundColor3 = Color3.new(1, 1, 1),
-        ZIndex = 203,
         BorderSizePixel = 0,
+        ZIndex = 207,
     }, {})
-    valueSlider.Parent = content
-    addCorner(valueSlider, 8)
-    addStroke(valueSlider, Theme.stroke, 1, 0.4)
+    cursorOuter.Parent = cursor
+    addCorner(cursorOuter, 10)
 
-    local valueGrad = Instance.new("UIGradient")
-    valueGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromHSV(H, S, 1)),
-        ColorSequenceKeypoint.new(1, Color3.new(0, 0, 0)),
-    })
-    valueGrad.Rotation = 90
-    valueGrad.Parent = valueSlider
-
-    -- Value cursor
-    local valueCursor = create("Frame", {
-        Size = UDim2.new(1, 4, 0, 6),
-        Position = UDim2.new(0, -2, 0, 0),
-        AnchorPoint = Vector2.new(0, 0.5),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 2,
-        BorderColor3 = Color3.new(0, 0, 0),
-        ZIndex = 204,
+    local cursorInner = create("Frame", {
+        Size = UDim2.new(1, -4, 1, -4),
+        Position = UDim2.fromScale(0.5, 0.5),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Color3.new(0, 0, 0),
+        BorderSizePixel = 0,
+        ZIndex = 208,
     }, {})
-    valueCursor.Parent = valueSlider
-    addCorner(valueCursor, 3)
+    cursorInner.Parent = cursorOuter
+    addCorner(cursorInner, 8)
 
-    -- === Hue slider (horizontal) ===
+    -- ===== HUE SLIDER (Horizontal) =====
     local hueSlider = create("Frame", {
-        Size = UDim2.new(0, 336, 0, 24),
-        Position = UDim2.new(0, 0, 1, -24),
+        Name = "HueSlider",
+        Size = UDim2.new(1, 0, 0, 28),
+        Position = UDim2.new(0, 0, 1, 8),
         BackgroundColor3 = Color3.new(1, 0, 0),
-        ZIndex = 203,
         BorderSizePixel = 0,
+        ZIndex = 203,
     }, {})
     hueSlider.Parent = content
     addCorner(hueSlider, 8)
@@ -262,244 +273,201 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     hueGrad.Rotation = 0
     hueGrad.Parent = hueSlider
 
-    -- Hue cursor
-    local hueCursor = create("Frame", {
-        Size = UDim2.new(0, 6, 1, 4),
-        Position = UDim2.new(0, 0, 0, -2),
-        AnchorPoint = Vector2.new(0.5, 0),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        BorderSizePixel = 2,
-        BorderColor3 = Color3.new(0, 0, 0),
+    local hueButton = create("TextButton", {
+        Name = "HueButton",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundTransparency = 1,
+        Text = "",
         ZIndex = 204,
     }, {})
-    hueCursor.Parent = hueSlider
-    addCorner(hueCursor, 3)
+    hueButton.Parent = hueSlider
 
-    -- === Preview and input section ===
-    local previewFrame = create("Frame", {
-        Size = UDim2.new(1, 0, 0, 48),
-        Position = UDim2.new(0, 12, 1, -60),
+    local hueCursor = create("Frame", {
+        Name = "HueCursor",
+        Size = UDim2.new(0, 4, 1, 8),
+        Position = UDim2.new(0, 0, 0.5, 0),
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BorderSizePixel = 0,
+        ZIndex = 205,
+    }, {})
+    hueCursor.Parent = hueSlider
+    addCorner(hueCursor, 2)
+    addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
+
+    -- ===== PREVIEW & HEX INPUT =====
+    local previewContainer = create("Frame", {
+        Name = "PreviewContainer",
+        Size = UDim2.new(1, 0, 0, 52),
+        Position = UDim2.new(0, 12, 1, -64),
         BackgroundTransparency = 1,
         ZIndex = 202,
     }, {})
-    previewFrame.Parent = popup
+    previewContainer.Parent = popup
 
-    -- Color preview box
+    -- Color preview
     local preview = create("Frame", {
-        Size = UDim2.new(0, 80, 0, 48),
+        Name = "Preview",
+        Size = UDim2.new(0, 90, 1, 0),
         BackgroundColor3 = Color3.fromHSV(H, S, V),
+        BorderSizePixel = 0,
         ZIndex = 203,
     }, {})
-    preview.Parent = previewFrame
+    preview.Parent = previewContainer
     addCorner(preview, 8)
     addStroke(preview, Theme.stroke, 2, 0.3)
 
     -- Hex input
-    local hexBox = create("TextBox", {
-        Size = UDim2.new(0, 120, 0, 48),
-        Position = UDim2.new(0, 92, 0, 0),
+    local hexInput = create("TextBox", {
+        Name = "HexInput",
+        Size = UDim2.new(1, -100, 1, 0),
+        Position = UDim2.new(0, 100, 0, 0),
         BackgroundColor3 = Theme.control,
         Text = "",
         PlaceholderText = "#FFFFFF",
         TextColor3 = Theme.text,
         Font = FONT,
         TextSize = 16,
-        ZIndex = 203,
+        TextXAlignment = Enum.TextXAlignment.Center,
         ClearTextOnFocus = false,
-    }, {})
-    hexBox.Parent = previewFrame
-    addCorner(hexBox, 8)
-    addStroke(hexBox, Theme.stroke, 1, 0.5)
-    addPadding(hexBox, 8)
-
-    -- RGB values display
-    local rgbLabel = create("TextLabel", {
-        Size = UDim2.new(0, 144, 0, 48),
-        Position = UDim2.new(1, -144, 0, 0),
-        BackgroundTransparency = 1,
-        Text = "R:255 G:255 B:255",
-        TextColor3 = Theme.textDim,
-        Font = FONT,
-        TextSize = 13,
-        TextXAlignment = Enum.TextXAlignment.Right,
         ZIndex = 203,
     }, {})
-    rgbLabel.Parent = previewFrame
+    hexInput.Parent = previewContainer
+    addCorner(hexInput, 8)
+    addStroke(hexInput, Theme.stroke, 1, 0.4)
 
-    -- === Buttons ===
-    local btnContainer = create("Frame", {
-        Size = UDim2.new(1, -24, 0, 36),
+    -- ===== BUTTONS =====
+    local buttonContainer = create("Frame", {
+        Name = "Buttons",
+        Size = UDim2.new(1, -24, 0, 38),
         Position = UDim2.new(0, 12, 1, -12),
         AnchorPoint = Vector2.new(0, 1),
         BackgroundTransparency = 1,
         ZIndex = 202,
     }, {})
-    btnContainer.Parent = popup
+    buttonContainer.Parent = popup
 
     local cancelBtn = create("TextButton", {
+        Name = "CancelButton",
         Size = UDim2.new(0.48, 0, 1, 0),
         BackgroundColor3 = Theme.control,
         Text = "Cancel",
         TextColor3 = Theme.text,
         Font = FONT_B,
-        TextSize = 15,
+        TextSize = 16,
         ZIndex = 203,
     }, {})
-    cancelBtn.Parent = btnContainer
+    cancelBtn.Parent = buttonContainer
     addCorner(cancelBtn, 8)
     withHover(cancelBtn, Theme.control, Theme.hover)
 
     local applyBtn = create("TextButton", {
+        Name = "ApplyButton",
         Size = UDim2.new(0.48, 0, 1, 0),
         Position = UDim2.new(0.52, 0, 0, 0),
         BackgroundColor3 = Theme.accent,
         Text = "Apply",
         TextColor3 = Theme.text,
         Font = FONT_B,
-        TextSize = 15,
+        TextSize = 16,
         ZIndex = 203,
     }, {})
-    applyBtn.Parent = btnContainer
+    applyBtn.Parent = buttonContainer
     addCorner(applyBtn, 8)
     withHover(applyBtn, Theme.accent, Theme.accentDim)
 
-    -- === Update functions ===
-    local function updateDisplay()
+    -- ===== UPDATE FUNCTIONS =====
+    local function updateVisuals()
         local currentColor = Color3.fromHSV(H, S, V)
+        
+        -- Update main picker background
+        pickerFrame.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
+        
+        -- Update cursor position
+        cursor.Position = UDim2.new(S, 0, 1 - V, 0)
+        
+        -- Update hue cursor
+        hueCursor.Position = UDim2.new(H, 0, 0.5, 0)
         
         -- Update preview
         preview.BackgroundColor3 = currentColor
         
-        -- Update color square background
-        colorFrame.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
-        
-        -- Update value slider gradient
-        valueGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromHSV(H, S, 1)),
-            ColorSequenceKeypoint.new(1, Color3.new(0, 0, 0)),
-        })
-        
-        -- Update cursors
-        colorCursor.Position = UDim2.new(S, 0, 1 - V, 0)
-        valueCursor.Position = UDim2.new(0, -2, 1 - V, 0)
-        hueCursor.Position = UDim2.new(H, 0, 0, -2)
-        
-        -- Update hex box
-        hexBox.Text = "#" .. currentColor:ToHex():upper()
-        
-        -- Update RGB label
-        local r = math.floor(currentColor.R * 255 + 0.5)
-        local g = math.floor(currentColor.G * 255 + 0.5)
-        local b = math.floor(currentColor.B * 255 + 0.5)
-        rgbLabel.Text = string.format("R:%d G:%d B:%d", r, g, b)
+        -- Update hex input
+        hexInput.Text = "#" .. currentColor:ToHex():upper()
     end
 
-    -- === Input handlers ===
-    
-    -- Color square (Saturation + Value)
-    local colorDragging = false
-    colorFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            colorDragging = true
-            
-            local function updateSV(pos)
-                local relX = math.clamp((pos.X - colorFrame.AbsolutePosition.X) / colorFrame.AbsoluteSize.X, 0, 1)
-                local relY = math.clamp((pos.Y - colorFrame.AbsolutePosition.Y) / colorFrame.AbsoluteSize.Y, 0, 1)
-                S = relX
-                V = 1 - relY
-                updateDisplay()
-            end
-            
-            updateSV(input.Position)
+    -- ===== INPUT HANDLERS =====
+    local draggingPicker = false
+    local draggingHue = false
+
+    -- Main picker dragging
+    pickerButton.MouseButton1Down:Connect(function()
+        draggingPicker = true
+        
+        local function updateFromMouse(inputPos)
+            local relX = math.clamp((inputPos.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+            local relY = math.clamp((inputPos.Y - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
+            S = relX
+            V = 1 - relY
+            updateVisuals()
         end
+        
+        updateFromMouse(UIS:GetMouseLocation())
     end)
 
-    -- Value slider
-    local valueDragging = false
-    valueSlider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            valueDragging = true
-            
-            local function updateValue(pos)
-                local relY = math.clamp((pos.Y - valueSlider.AbsolutePosition.Y) / valueSlider.AbsoluteSize.Y, 0, 1)
-                V = 1 - relY
-                updateDisplay()
-            end
-            
-            updateValue(input.Position)
+    -- Hue slider dragging
+    hueButton.MouseButton1Down:Connect(function()
+        draggingHue = true
+        
+        local function updateHue(inputPos)
+            local relX = math.clamp((inputPos.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
+            H = relX
+            updateVisuals()
         end
+        
+        updateHue(UIS:GetMouseLocation())
     end)
 
-    -- Hue slider
-    local hueDragging = false
-    hueSlider.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            hueDragging = true
-            
-            local function updateHue(pos)
-                local relX = math.clamp((pos.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
-                H = relX
-                updateDisplay()
-            end
-            
-            updateHue(input.Position)
-        end
-    end)
-
-    -- Global drag handlers
+    -- Global input handling
     UIS.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            
-            if colorDragging then
-                local relX = math.clamp((input.Position.X - colorFrame.AbsolutePosition.X) / colorFrame.AbsoluteSize.X, 0, 1)
-                local relY = math.clamp((input.Position.Y - colorFrame.AbsolutePosition.Y) / colorFrame.AbsoluteSize.Y, 0, 1)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            if draggingPicker then
+                local relX = math.clamp((input.Position.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+                local relY = math.clamp((input.Position.Y - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
                 S = relX
                 V = 1 - relY
-                updateDisplay()
-            elseif valueDragging then
-                local relY = math.clamp((input.Position.Y - valueSlider.AbsolutePosition.Y) / valueSlider.AbsoluteSize.Y, 0, 1)
-                V = 1 - relY
-                updateDisplay()
-            elseif hueDragging then
+                updateVisuals()
+            elseif draggingHue then
                 local relX = math.clamp((input.Position.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
                 H = relX
-                updateDisplay()
+                updateVisuals()
             end
         end
     end)
 
     UIS.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or 
-           input.UserInputType == Enum.UserInputType.Touch then
-            colorDragging = false
-            valueDragging = false
-            hueDragging = false
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            draggingPicker = false
+            draggingHue = false
         end
     end)
 
     -- Hex input handler
-    hexBox.FocusLost:Connect(function()
-        local text = hexBox.Text
-        -- Remove # if present
+    hexInput.FocusLost:Connect(function()
+        local text = hexInput.Text
         if text:sub(1, 1) == "#" then
             text = text:sub(2)
         end
         
-        -- Try to parse hex
         local success, result = pcall(function()
             return Color3.fromHex(text)
         end)
         
         if success then
             H, S, V = result:ToHSV()
-            updateDisplay()
+            updateVisuals()
         else
-            -- Reset to current color
-            updateDisplay()
+            updateVisuals() -- Reset to current color
         end
     end)
 
@@ -515,10 +483,10 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         overlay:Destroy()
     end)
 
-    -- Close on overlay click (outside popup)
+    -- Click outside to close
     overlay.MouseButton1Click:Connect(function()
         local mouse = UIS:GetMouseLocation()
-        local pos = Vector2.new(mouse.X, mouse.Y - 36) -- Account for topbar
+        local pos = Vector2.new(mouse.X, mouse.Y - 36)
         local p0 = popup.AbsolutePosition
         local ps = popup.AbsoluteSize
         
@@ -530,8 +498,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         end
     end)
 
-    -- Initial display update
-    updateDisplay()
+    -- Initial update
+    updateVisuals()
 end
 -- API: Window -> Tabs -> UnderSections -> Controls
 function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
