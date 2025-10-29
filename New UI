@@ -85,6 +85,9 @@ local RoundedUI = {}
 -- Enhanced Color Picker based on Advanced Color Picker by Viperdune
 -- Adapted for RoundedUI library
 
+--!strict
+-- Fixed Color Picker with proper layout
+
 local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Overlay
     local overlay = create("TextButton", {
@@ -98,11 +101,11 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     }, {})
     overlay.Parent = rootGui
 
-    -- Main popup window
+    -- Main popup window (increased width for better layout)
     local popup = create("Frame", {
         Name = "ColorPickerWindow",
-        Size = UDim2.new(0, 340, 0, 440),
-        Position = UDim2.new(0.5, -170, 0.5, -220),
+        Size = UDim2.new(0, 380, 0, 480),
+        Position = UDim2.new(0.5, -190, 0.5, -240),
         BackgroundColor3 = Theme.bg,
         ZIndex = 201,
     }, {})
@@ -137,7 +140,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Content container
     local content = create("Frame", {
         Name = "Content",
-        Size = UDim2.new(1, -24, 1, -100),
+        Size = UDim2.new(1, -24, 0, 260),
         Position = UDim2.new(0, 12, 0, 52),
         BackgroundTransparency = 1,
         ZIndex = 202,
@@ -151,7 +154,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     end
 
     -- ===== MAIN COLOR PICKER SQUARE =====
-    local pickerSize = 280
+    local pickerSize = 240
     local pickerFrame = create("Frame", {
         Name = "ColorPicker",
         Size = UDim2.new(0, pickerSize, 0, pickerSize),
@@ -180,8 +183,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     local satGrad = Instance.new("UIGradient")
     satGrad.Color = ColorSequence.new(Color3.new(1, 1, 1))
     satGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0),   -- Left: white (no saturation)
-        NumberSequenceKeypoint.new(1, 1),   -- Right: transparent (full saturation)
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(1, 1),
     })
     satGrad.Rotation = 0
     satGrad.Parent = satGradient
@@ -201,8 +204,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     local valGrad = Instance.new("UIGradient")
     valGrad.Color = ColorSequence.new(Color3.new(0, 0, 0))
     valGrad.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 1),   -- Top: transparent (full value)
-        NumberSequenceKeypoint.new(1, 0),   -- Bottom: black (no value)
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(1, 0),
     })
     valGrad.Rotation = 90
     valGrad.Parent = valGradient
@@ -247,11 +250,11 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     cursorInner.Parent = cursorOuter
     addCorner(cursorInner, 8)
 
-    -- ===== HUE SLIDER (Horizontal) =====
+    -- ===== HUE SLIDER (Vertical, right side) =====
     local hueSlider = create("Frame", {
         Name = "HueSlider",
-        Size = UDim2.new(1, 0, 0, 28),
-        Position = UDim2.new(0, 0, 1, 8),
+        Size = UDim2.new(0, 32, 0, pickerSize),
+        Position = UDim2.new(0, pickerSize + 12, 0, 0),
         BackgroundColor3 = Color3.new(1, 0, 0),
         BorderSizePixel = 0,
         ZIndex = 203,
@@ -270,7 +273,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
         ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1)),
     })
-    hueGrad.Rotation = 0
+    hueGrad.Rotation = 90
     hueGrad.Parent = hueSlider
 
     local hueButton = create("TextButton", {
@@ -284,8 +287,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     local hueCursor = create("Frame", {
         Name = "HueCursor",
-        Size = UDim2.new(0, 4, 1, 8),
-        Position = UDim2.new(0, 0, 0.5, 0),
+        Size = UDim2.new(1, 8, 0, 4),
+        Position = UDim2.new(0.5, 0, 0, 0),
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Color3.new(1, 1, 1),
         BorderSizePixel = 0,
@@ -295,45 +298,98 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     addCorner(hueCursor, 2)
     addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
-    -- ===== PREVIEW & HEX INPUT =====
-    local previewContainer = create("Frame", {
-        Name = "PreviewContainer",
-        Size = UDim2.new(1, 0, 0, 52),
-        Position = UDim2.new(0, 12, 1, -64),
-        BackgroundTransparency = 1,
-        ZIndex = 202,
-    }, {})
-    previewContainer.Parent = popup
-
-    -- Color preview
+    -- ===== COLOR PREVIEW =====
     local preview = create("Frame", {
         Name = "Preview",
-        Size = UDim2.new(0, 90, 1, 0),
+        Size = UDim2.new(0, 80, 0, 32),
+        Position = UDim2.new(0, pickerSize + 12, 0, pickerSize + 12),
         BackgroundColor3 = Color3.fromHSV(H, S, V),
         BorderSizePixel = 0,
         ZIndex = 203,
     }, {})
-    preview.Parent = previewContainer
+    preview.Parent = content
     addCorner(preview, 8)
     addStroke(preview, Theme.stroke, 2, 0.3)
 
-    -- Hex input
+    -- ===== INFO PANEL (RGB & HEX) =====
+    local infoPanel = create("Frame", {
+        Name = "InfoPanel",
+        Size = UDim2.new(1, -24, 0, 100),
+        Position = UDim2.new(0, 12, 0, 324),
+        BackgroundColor3 = Theme.panel2,
+        ZIndex = 202,
+    }, {})
+    infoPanel.Parent = popup
+    addCorner(infoPanel, 10)
+    addStroke(infoPanel, Theme.stroke, 1, 0.4)
+    addPadding(infoPanel, 10)
+
+    -- RGB Inputs
+    local function createNumberInput(name, yPos)
+        local label = create("TextLabel", {
+            Size = UDim2.new(0, 25, 0, 24),
+            Position = UDim2.new(0, 0, 0, yPos),
+            BackgroundTransparency = 1,
+            Text = name .. ":",
+            TextColor3 = Theme.textDim,
+            Font = FONT,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 203,
+        }, {})
+        label.Parent = infoPanel
+
+        local input = create("TextBox", {
+            Size = UDim2.new(0, 70, 0, 24),
+            Position = UDim2.new(0, 30, 0, yPos),
+            BackgroundColor3 = Theme.control,
+            Text = "255",
+            TextColor3 = Theme.text,
+            Font = FONT,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Center,
+            ClearTextOnFocus = false,
+            ZIndex = 203,
+        }, {})
+        input.Parent = infoPanel
+        addCorner(input, 6)
+        addStroke(input, Theme.stroke, 1, 0.4)
+
+        return input
+    end
+
+    local rInput = createNumberInput("R", 0)
+    local gInput = createNumberInput("G", 30)
+    local bInput = createNumberInput("B", 60)
+
+    -- Hex Input
+    local hexLabel = create("TextLabel", {
+        Size = UDim2.new(0, 40, 0, 24),
+        Position = UDim2.new(0, 120, 0, 30),
+        BackgroundTransparency = 1,
+        Text = "HEX:",
+        TextColor3 = Theme.textDim,
+        Font = FONT,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 203,
+    }, {})
+    hexLabel.Parent = infoPanel
+
     local hexInput = create("TextBox", {
-        Name = "HexInput",
-        Size = UDim2.new(1, -100, 1, 0),
-        Position = UDim2.new(0, 100, 0, 0),
+        Size = UDim2.new(1, -170, 0, 24),
+        Position = UDim2.new(0, 165, 0, 30),
         BackgroundColor3 = Theme.control,
-        Text = "",
-        PlaceholderText = "#FFFFFF",
+        Text = "#FFFFFF",
         TextColor3 = Theme.text,
         Font = FONT,
-        TextSize = 16,
+        TextSize = 14,
         TextXAlignment = Enum.TextXAlignment.Center,
         ClearTextOnFocus = false,
         ZIndex = 203,
     }, {})
-    hexInput.Parent = previewContainer
-    addCorner(hexInput, 8)
+    hexInput.Parent = infoPanel
+    addCorner(hexInput, 6)
     addStroke(hexInput, Theme.stroke, 1, 0.4)
 
     -- ===== BUTTONS =====
@@ -377,7 +433,11 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     withHover(applyBtn, Theme.accent, Theme.accentDim)
 
     -- ===== UPDATE FUNCTIONS =====
+    local updatingFromCode = false
+
     local function updateVisuals()
+        updatingFromCode = true
+        
         local currentColor = Color3.fromHSV(H, S, V)
         
         -- Update main picker background
@@ -387,13 +447,24 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         cursor.Position = UDim2.new(S, 0, 1 - V, 0)
         
         -- Update hue cursor
-        hueCursor.Position = UDim2.new(H, 0, 0.5, 0)
+        hueCursor.Position = UDim2.new(0.5, 0, H, 0)
         
         -- Update preview
         preview.BackgroundColor3 = currentColor
         
+        -- Update RGB inputs
+        local r = math.floor(currentColor.R * 255 + 0.5)
+        local g = math.floor(currentColor.G * 255 + 0.5)
+        local b = math.floor(currentColor.B * 255 + 0.5)
+        
+        rInput.Text = tostring(r)
+        gInput.Text = tostring(g)
+        bInput.Text = tostring(b)
+        
         -- Update hex input
         hexInput.Text = "#" .. currentColor:ToHex():upper()
+        
+        updatingFromCode = false
     end
 
     -- ===== INPUT HANDLERS =====
@@ -420,8 +491,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         draggingHue = true
         
         local function updateHue(inputPos)
-            local relX = math.clamp((inputPos.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
-            H = relX
+            local relY = math.clamp((inputPos.Y - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+            H = relY
             updateVisuals()
         end
         
@@ -438,8 +509,8 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
                 V = 1 - relY
                 updateVisuals()
             elseif draggingHue then
-                local relX = math.clamp((input.Position.X - hueSlider.AbsolutePosition.X) / hueSlider.AbsoluteSize.X, 0, 1)
-                H = relX
+                local relY = math.clamp((input.Position.Y - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+                H = relY
                 updateVisuals()
             end
         end
@@ -452,8 +523,27 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         end
     end)
 
+    -- RGB input handlers
+    local function handleRGBInput()
+        if updatingFromCode then return end
+        
+        local r = math.clamp(tonumber(rInput.Text) or 0, 0, 255) / 255
+        local g = math.clamp(tonumber(gInput.Text) or 0, 0, 255) / 255
+        local b = math.clamp(tonumber(bInput.Text) or 0, 0, 255) / 255
+        
+        local color = Color3.new(r, g, b)
+        H, S, V = color:ToHSV()
+        updateVisuals()
+    end
+
+    rInput.FocusLost:Connect(handleRGBInput)
+    gInput.FocusLost:Connect(handleRGBInput)
+    bInput.FocusLost:Connect(handleRGBInput)
+
     -- Hex input handler
     hexInput.FocusLost:Connect(function()
+        if updatingFromCode then return end
+        
         local text = hexInput.Text
         if text:sub(1, 1) == "#" then
             text = text:sub(2)
@@ -467,7 +557,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
             H, S, V = result:ToHSV()
             updateVisuals()
         else
-            updateVisuals() -- Reset to current color
+            updateVisuals()
         end
     end)
 
@@ -501,6 +591,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Initial update
     updateVisuals()
 end
+
 -- API: Window -> Tabs -> UnderSections -> Controls
 function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
     local gui = create("ScreenGui", {
