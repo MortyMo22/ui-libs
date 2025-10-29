@@ -96,16 +96,19 @@ local RoundedUI = {}
 
 local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Overlay
-    local overlay = create("TextButton", {
-        Name = "ColorPickerOverlay",
-        Size = UDim2.fromScale(1, 1),
-        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.4,
-        Text = "",
-        ZIndex = 200,
-        AutoButtonColor = false,
-    }, {})
-    overlay.Parent = rootGui
+    -- Overlay (covers whole screen including safe area)
+local overlay = create("TextButton", {
+    Name = "ColorPickerOverlay",
+    Position = UDim2.new(0, 0, 0, 0),
+    Size = UDim2.fromScale(1, 1),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = 0.45,
+    Text = "",
+    ZIndex = 200,
+    AutoButtonColor = false,
+}, {})
+overlay.Parent = rootGui
+
 
     -- Main popup window
     local popup = create("Frame", {
@@ -258,7 +261,6 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
 
 
--- ===== HUE SLIDER (single, cleaned) =====
 local sliderWidth = 24
 
 -- Outer container: styling + clipping
@@ -266,22 +268,22 @@ local hueSlider = create("Frame", {
     Name = "HueSlider",
     Size = UDim2.new(0, sliderWidth, 0, pickerSize),
     Position = UDim2.new(0, pickerSize + 8, 0, 0),
-    BackgroundTransparency = 1,
+    BackgroundTransparency = 1,   -- container only
     BorderSizePixel = 0,
     ZIndex = 203,
-    ClipsDescendants = true, -- important: clip rounded corners and cursor
+    ClipsDescendants = true,      -- clip rounded corners
 }, {})
 hueSlider.Parent = content
 addCorner(hueSlider, 8)
 addStroke(hueSlider, Theme.stroke, 2, 0.3)
 
--- Inner fill: actual gradient host
+-- Inner fill: visible surface for the gradient
 local hueFill = create("Frame", {
     Name = "HueFill",
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(0.5, 0, 0.5, 0),
     Size = UDim2.new(1, -2, 1, -2),
-    BackgroundColor3 = Color3.new(1, 1, 1),
+    BackgroundColor3 = Color3.new(1, 1, 1), -- non-transparent
     BackgroundTransparency = 0,
     BorderSizePixel = 0,
     ZIndex = 203,
@@ -289,7 +291,7 @@ local hueFill = create("Frame", {
 hueFill.Parent = hueSlider
 addCorner(hueFill, 8)
 
--- Vertical full-spectrum gradient
+-- Full spectrum gradient, vertical top->bottom
 local hueGrad = Instance.new("UIGradient")
 hueGrad.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0.000, Color3.new(1, 0, 0)),  -- Red
@@ -298,12 +300,12 @@ hueGrad.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0.500, Color3.new(0, 1, 1)),  -- Cyan
     ColorSequenceKeypoint.new(0.666, Color3.new(0, 0, 1)),  -- Blue
     ColorSequenceKeypoint.new(0.833, Color3.new(1, 0, 1)),  -- Magenta
-    ColorSequenceKeypoint.new(1.000, Color3.new(1, 0, 0)),  -- Red (loop)
+    ColorSequenceKeypoint.new(1.000, Color3.new(1, 0, 0)),  -- Red (close loop)
 })
 hueGrad.Rotation = 90
 hueGrad.Parent = hueFill
 
--- Click target on top (transparent)
+-- Transparent click target covering the slider
 local hueButton = create("TextButton", {
     Name = "HueButton",
     Size = UDim2.fromScale(1, 1),
@@ -313,10 +315,10 @@ local hueButton = create("TextButton", {
 }, {})
 hueButton.Parent = hueSlider
 
--- Thin cursor “handle”, not full-width
+-- Cursor above the fill
 local hueCursor = create("Frame", {
     Name = "HueCursor",
-    Size = UDim2.new(0, sliderWidth + 6, 0, 2), -- slim 2px bar slightly wider than slider
+    Size = UDim2.new(1, 6, 0, 6),
     Position = UDim2.new(0.5, 0, 0, 0),
     AnchorPoint = Vector2.new(0.5, 0.5),
     BackgroundColor3 = Color3.new(1, 1, 1),
@@ -324,9 +326,8 @@ local hueCursor = create("Frame", {
     ZIndex = 205,
 }, {})
 hueCursor.Parent = hueSlider
-addCorner(hueCursor, 2)
-addStroke(hueCursor, Color3.new(0, 0, 0), 1, 0)
-
+addCorner(hueCursor, 3)
+addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
 
     local hueButton = create("TextButton", {
