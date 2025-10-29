@@ -99,16 +99,25 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     local overlay = create("TextButton", {
         Name = "ColorPickerOverlay",
         Position = UDim2.new(0, 0, 0, 0),
-        Size = UDim2.fromScale(1, 1),
+        Size = UDim2.new(1, 0, 1, 0),
         BackgroundColor3 = Color3.fromRGB(0, 0, 0),
         BackgroundTransparency = 0.45,
         Text = "",
         ZIndex = 200,
         AutoButtonColor = false,
     }, {})
+
     overlay.Parent = rootGui
     overlay.ZIndex = 200
     overlay.Modal = true
+
+    -- Save previous IgnoreGuiInset and enable it while popup is open
+    local _prevIgnoreGuiInset = nil
+    if typeof(rootGui.IgnoreGuiInset) ~= "nil" then
+        _prevIgnoreGuiInset = rootGui.IgnoreGuiInset
+        rootGui.IgnoreGuiInset = true
+    end
+
 
 
     -- Main popup window (с учётом верхнего inset на мобильных)
@@ -134,7 +143,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         Name = "ColorPickerWindow",
         Size = UDim2.new(0, baseW, 0, baseH),
         -- центрируем и сдвигаем вниз на половину inset, чтобы не перекрываться системной панелью
-        Position = UDim2.new(0.5, -baseW/2, 0.5, -baseH/2 + math.floor(topInset * 0.5)),
+        Position = UDim2.new(0.5, -baseW/2, 0.5, -baseH/2),
         BackgroundColor3 = Theme.bg,
         ZIndex = 201,
     }, {})
@@ -662,11 +671,19 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
             onApply(Color3.fromHSV(H, S, V))
         end
         overlay:Destroy()
+        if _prevIgnoreGuiInset ~= nil then
+            rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
+        end
     end)
+
 
     cancelBtn.MouseButton1Click:Connect(function()
         overlay:Destroy()
+        if _prevIgnoreGuiInset ~= nil then
+            rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
+        end
     end)
+
 
     -- Click outside to close
     overlay.MouseButton1Click:Connect(function()
@@ -674,14 +691,18 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
         local pos = Vector2.new(mouse.X, mouse.Y - 36)
         local p0 = popup.AbsolutePosition
         local ps = popup.AbsoluteSize
-        
+
         local inside = pos.X >= p0.X and pos.X <= p0.X + ps.X and
                       pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
-        
+
         if not inside then
             overlay:Destroy()
+            if _prevIgnoreGuiInset ~= nil then
+                rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
+            end
         end
     end)
+
 
     -- Initial update
     updateVisuals()
