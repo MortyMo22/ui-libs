@@ -88,6 +88,9 @@ local RoundedUI = {}
 --!strict
 -- Fixed Color Picker with proper layout
 
+--!strict
+-- Fixed Color Picker - corrected vertical slider and preview position
+
 local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Overlay
     local overlay = create("TextButton", {
@@ -101,11 +104,11 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     }, {})
     overlay.Parent = rootGui
 
-    -- Main popup window (increased width for better layout)
+    -- Main popup window (optimized width)
     local popup = create("Frame", {
         Name = "ColorPickerWindow",
-        Size = UDim2.new(0, 380, 0, 480),
-        Position = UDim2.new(0.5, -190, 0.5, -240),
+        Size = UDim2.new(0, 340, 0, 480),
+        Position = UDim2.new(0.5, -170, 0.5, -240),
         BackgroundColor3 = Theme.bg,
         ZIndex = 201,
     }, {})
@@ -253,15 +256,15 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     -- ===== HUE SLIDER (Vertical, right side) =====
     local hueSlider = create("Frame", {
         Name = "HueSlider",
-        Size = UDim2.new(0, 32, 0, pickerSize),
-        Position = UDim2.new(0, pickerSize + 12, 0, 0),
+        Size = UDim2.new(0, 28, 0, pickerSize),
+        Position = UDim2.new(0, pickerSize + 8, 0, 0),
         BackgroundColor3 = Color3.new(1, 0, 0),
         BorderSizePixel = 0,
         ZIndex = 203,
     }, {})
     hueSlider.Parent = content
     addCorner(hueSlider, 8)
-    addStroke(hueSlider, Theme.stroke, 1, 0.4)
+    addStroke(hueSlider, Theme.stroke, 2, 0.3)
 
     local hueGrad = Instance.new("UIGradient")
     hueGrad.Color = ColorSequence.new({
@@ -287,7 +290,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
 
     local hueCursor = create("Frame", {
         Name = "HueCursor",
-        Size = UDim2.new(1, 8, 0, 4),
+        Size = UDim2.new(1, 6, 0, 6),
         Position = UDim2.new(0.5, 0, 0, 0),
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundColor3 = Color3.new(1, 1, 1),
@@ -295,20 +298,20 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ZIndex = 205,
     }, {})
     hueCursor.Parent = hueSlider
-    addCorner(hueCursor, 2)
+    addCorner(hueCursor, 3)
     addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
-    -- ===== COLOR PREVIEW =====
+    -- ===== COLOR PREVIEW (below hue slider) =====
     local preview = create("Frame", {
         Name = "Preview",
-        Size = UDim2.new(0, 80, 0, 32),
-        Position = UDim2.new(0, pickerSize + 12, 0, pickerSize + 12),
+        Size = UDim2.new(1, 0, 0, 48),
+        Position = UDim2.new(0, 0, 0, pickerSize + 8),
         BackgroundColor3 = Color3.fromHSV(H, S, V),
         BorderSizePixel = 0,
         ZIndex = 203,
     }, {})
     preview.Parent = content
-    addCorner(preview, 8)
+    addCorner(preview, 10)
     addStroke(preview, Theme.stroke, 2, 0.3)
 
     -- ===== INFO PANEL (RGB & HEX) =====
@@ -446,7 +449,7 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         -- Update cursor position
         cursor.Position = UDim2.new(S, 0, 1 - V, 0)
         
-        -- Update hue cursor
+        -- Update hue cursor position
         hueCursor.Position = UDim2.new(0.5, 0, H, 0)
         
         -- Update preview
@@ -591,7 +594,6 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Initial update
     updateVisuals()
 end
-
 -- API: Window -> Tabs -> UnderSections -> Controls
 function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
     local gui = create("ScreenGui", {
