@@ -369,7 +369,7 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     addStroke(preview, Theme.stroke, 2, 0.3)
 
     -- Info panel (позиция внизу под content, динамическая высота и отступ)
-    local infoPanelHeight = 96 -- можно настроить (уменьшил с 100 для лучшего отступа)
+    local infoPanelHeight = 90 -- можно настроить (уменьшил с 100 для лучшего отступа)
     local infoPanelY = pickerSize + 12
     local infoPanel = create("Frame", {
         Name = "InfoPanel",
