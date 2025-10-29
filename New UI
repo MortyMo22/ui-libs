@@ -199,6 +199,24 @@ local function createColorPickerPopup(rootGui, startColor, onApply)
         ZIndex = 202,
     }, {})
     content.Parent = popup
+	
+    -- === Фикс 3: ограничение ширины для устойчивой раскладки ===
+    do
+        -- доступная ширина внутри popup
+        local availableW = content.AbsoluteSize.X
+        -- требуемая ширина: квадрат + отступ 8 + hue (24) + отступ 16 + preview (36)
+        local requiredW = pickerSize + 8 + 24 + 16 + 36
+
+        if requiredW > availableW then
+            -- уменьшаем квадрат так, чтобы всё влезло; но не меньше 96
+            local newPicker = math.max(96, availableW - (8 + 24 + 16 + 36))
+            pickerSize = math.floor(newPicker)
+
+            -- обновляем размеры зависящих элементов
+            content.Size = UDim2.new(1, -24, 0, pickerSize)
+        end
+    end
+	
 
     -- Initialize HSV
     local H, S, V = 0, 1, 1
@@ -576,56 +594,113 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     local draggingHue = false
 
     -- Main picker dragging
-    pickerButton.MouseButton1Down:Connect(function()
+    pickerButton.MouseButton1Down:Connect(function(x, y)
         draggingPicker = true
-        
-        local function updateFromMouse(inputPos)
-            local relX = math.clamp((inputPos.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
-            local relY = math.clamp((inputPos.Y - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
-            S = relX
-            V = 1 - relY
-            updateVisuals()
-        end
-        
-        updateFromMouse(UIS:GetMouseLocation())
+
+        local gs = game:GetService("GuiService")
+        local iv = gs and gs:GetGuiInset() or Vector2.zero
+        local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+
+        -- x, y приходят в экранных координатах; компенсируем inset для точного попадания
+        local mx, my = x, y - insetY
+        local relX = math.clamp((mx - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+        local relY = math.clamp((my - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
+        S = relX
+        V = 1 - relY
+        updateVisuals()
     end)
+
 
     -- Hue slider dragging
-    hueButton.MouseButton1Down:Connect(function()
+    hueButton.MouseButton1Down:Connect(function(x, y)
         draggingHue = true
-        
-        local function updateHue(inputPos)
-            local relY = math.clamp((inputPos.Y - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
-            H = relY
-            updateVisuals()
-        end
-        
-        updateHue(UIS:GetMouseLocation())
+
+        local gs = game:GetService("GuiService")
+        local iv = gs and gs:GetGuiInset() or Vector2.zero
+        local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+
+        local mx, my = x, y - insetY
+        local relY = math.clamp((my - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+        H = relY
+        updateVisuals()
     end)
 
-    -- Global input handling
+
+    -- Global input handling (mouse + touch)
     UIS.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
+        local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
+        local isTouchMove = input.UserInputType == Enum.UserInputType.Touch
+
+        if isMouseMove or isTouchMove then
             if draggingPicker then
-                local relX = math.clamp((input.Position.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
-                local relY = math.clamp((input.Position.Y - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
+                local pos = input.Position
+                -- компенсируем GUI inset на мобильных при IgnoreGuiInset
+                local insetY = 0
+                if typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true then
+                    local gs = game:GetService("GuiService")
+                    local iv = gs and gs:GetGuiInset() or Vector2.zero
+                    insetY = iv.Y or 0
+                end
+
+                local relX = math.clamp((pos.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+                local relY = math.clamp(((pos.Y - insetY) - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
                 S = relX
                 V = 1 - relY
                 updateVisuals()
+
             elseif draggingHue then
-                local relY = math.clamp((input.Position.Y - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+                local pos = input.Position
+                local insetY = 0
+                if typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true then
+                    local gs = game:GetService("GuiService")
+                    local iv = gs and gs:GetGuiInset() or Vector2.zero
+                    insetY = iv.Y or 0
+                end
+
+                local relY = math.clamp(((pos.Y - insetY) - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
                 H = relY
                 updateVisuals()
             end
         end
     end)
 
+    -- Touch begin (ставим флаги как на мыши)
+    pickerButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            draggingPicker = true
+            local gs = game:GetService("GuiService")
+            local iv = gs and gs:GetGuiInset() or Vector2.zero
+            local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+            local pos = input.Position
+            local relX = math.clamp((pos.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+            local relY = math.clamp(((pos.Y - insetY) - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
+            S = relX
+            V = 1 - relY
+            updateVisuals()
+        end
+    end)
+
+    hueButton.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            draggingHue = true
+            local gs = game:GetService("GuiService")
+            local iv = gs and gs:GetGuiInset() or Vector2.zero
+            local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+            local pos = input.Position
+            local relY = math.clamp(((pos.Y - insetY) - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+            H = relY
+            updateVisuals()
+        end
+    end)
+
+    -- End drag on mouse/touch
     UIS.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             draggingPicker = false
             draggingHue = false
         end
     end)
+
 
     -- RGB input handlers
     local function handleRGBInput()
