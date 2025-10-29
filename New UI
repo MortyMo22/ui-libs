@@ -96,19 +96,16 @@ local RoundedUI = {}
 
 local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Overlay
-    -- Overlay (covers whole screen including safe area)
-local overlay = create("TextButton", {
-    Name = "ColorPickerOverlay",
-    Position = UDim2.new(0, 0, 0, 0),
-    Size = UDim2.fromScale(1, 1),
-    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-    BackgroundTransparency = 0.45,
-    Text = "",
-    ZIndex = 200,
-    AutoButtonColor = false,
-}, {})
-overlay.Parent = rootGui
-
+    local overlay = create("TextButton", {
+        Name = "ColorPickerOverlay",
+        Size = UDim2.fromScale(1, 1),
+        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+        BackgroundTransparency = 0.4,
+        Text = "",
+        ZIndex = 200,
+        AutoButtonColor = false,
+    }, {})
+    overlay.Parent = rootGui
 
     -- Main popup window
     local popup = create("Frame", {
