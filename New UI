@@ -925,7 +925,15 @@ end
             TextSize = 16,
         }, {})
         addCorner(btn, 8)
-        withHover(btn, Theme.control, Theme.hover)
+        btn.MouseEnter:Connect(function()
+    if tabs[tabName] and tabs[tabName].page.Visible then return end
+    btn.BackgroundColor3 = Theme.hover
+end)
+
+btn.MouseLeave:Connect(function()
+    if tabs[tabName] and tabs[tabName].page.Visible then return end
+    btn.BackgroundColor3 = Theme.control
+end)
         btn.Parent = tabsStrip
 recalcTabsCanvas()
         -- Tab page
