@@ -920,7 +920,7 @@ end
             BackgroundColor3 = Theme.control,
             Text = tabName,
             TextColor3 = Theme.text,
-            Font = FONT_B,
+            Font = FONT,
             TextSize = 16,
         }, {})
         addCorner(btn, 8)
