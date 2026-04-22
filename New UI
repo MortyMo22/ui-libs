@@ -926,17 +926,21 @@ end
         addCorner(btn, 8)
         withHover(btn, Theme.control, Theme.hover)
         btn.Parent = tabsStrip
-
+recalcTabsCanvas()
         -- Tab page
         local page = create("Frame", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
-            Visible = (#tabs == 0),
+            Visible = (next(tabs) == nil),
         }, {})
         page.Parent = content
 
         tabs[tabName] = {button=btn, page=page}
 
+if next(tabs) == tabName then
+    btn.BackgroundColor3 = Theme.accent
+    btn.Font = FONT_B
+end
         -- Switch tab on click
         btn.MouseButton1Click:Connect(function()
             for name, data in pairs(tabs) do
@@ -946,12 +950,7 @@ end
 end
 
             -- Внутри btn.MouseButton1Click:Connect(function() ... end)
-for name, data in pairs(tabs) do
-    data.page.Visible = (name == tabName)
-    data.button.BackgroundColor3 = (name == tabName) and Theme.accent or Theme.control
-    data.button.Font = (name == tabName) and FONT_B or FONT
-end
--- УДАЛИТЬ строку: leftTitle.Text = tabName
+
 
         end)
 
@@ -1037,7 +1036,7 @@ end
                 
             end
             stack.Changed:Connect(resize)
-            RunService.RenderStepped:Connect(resize)
+            stack:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
 
             local sectionAPI = {}
 
