@@ -914,6 +914,7 @@ end
     end
 
     function api:AddSection(tabName: string)
+	local isFirst = next(tabs) == nil
         -- Tab button
         local btn = create("TextButton", {
             Size = UDim2.new(0, 120, 1, -12),
@@ -931,13 +932,13 @@ recalcTabsCanvas()
         local page = create("Frame", {
             Size = UDim2.new(1, 0, 1, 0),
             BackgroundTransparency = 1,
-            Visible = (next(tabs) == nil),
+            Visible = isFirst,
         }, {})
         page.Parent = content
 
         tabs[tabName] = {button=btn, page=page}
 
-if next(tabs) == tabName then
+if isFirst then
     btn.BackgroundColor3 = Theme.accent
     btn.Font = FONT_B
 end
