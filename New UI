@@ -672,7 +672,7 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
 
     -- Global input handling (mouse + touch)
-table.insert(connections, UIS.InputChanged:Connect(function(input)
+    table.insert(connections, UIS.InputChanged:Connect(function(input)
         local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
         local isTouchMove = input.UserInputType == Enum.UserInputType.Touch
 
@@ -707,7 +707,7 @@ table.insert(connections, UIS.InputChanged:Connect(function(input)
                 updateVisuals()
             end
         end
-    end)
+    end))
 
     -- Touch begin (ставим флаги как на мыши)
     pickerButton.InputBegan:Connect(function(input)
