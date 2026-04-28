@@ -925,17 +925,26 @@ end
     content.Parent = window
     addPadding(content, 6)
 
-local minimized = false
+local hidden = false
 
 minimizeBtn.MouseButton1Click:Connect(function()
-    minimized = not minimized
-    tabsStrip.Visible = not minimized
-    content.Visible = not minimized
+    hidden = not hidden
+    window.Visible = not hidden
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
 end)
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        hidden = not hidden
+        window.Visible = not hidden
+    end
+end)
+
 
     local api = {}
 
@@ -2012,6 +2021,7 @@ if isMobile() then
     end)
 end
 
+-- 📱 Mobile toggle button
 if isMobile() then
     local toggleBtn = create("TextButton", {
         Size = UDim2.new(0, 60, 0, 60),
@@ -2021,6 +2031,7 @@ if isMobile() then
         TextColor3 = Color3.new(1,1,1),
         Font = FONT_B,
         TextSize = 16,
+        ZIndex = 500,
     }, {})
     toggleBtn.Parent = gui
     addCorner(toggleBtn, 12)
@@ -2055,7 +2066,8 @@ if isMobile() then
     end)
 
     toggleBtn.MouseButton1Click:Connect(function()
-        window.Visible = not window.Visible
+        hidden = not hidden
+        window.Visible = not hidden
     end)
 end
 
