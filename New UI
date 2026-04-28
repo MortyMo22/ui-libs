@@ -839,6 +839,32 @@ function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
     }, {})
     rightTitle.Parent = header
 
+-- КНОПКА ЗАКРЫТЬ (X)
+local closeBtn = create("TextButton", {
+    Size = UDim2.new(0, 24, 0, 24),
+    Position = UDim2.new(1, -28, 0.5, -12),
+    BackgroundColor3 = Theme.warn,
+    Text = "X",
+    TextColor3 = Color3.new(1,1,1),
+    Font = FONT_B,
+    TextSize = 14,
+}, {})
+addCorner(closeBtn, 6)
+closeBtn.Parent = header
+
+-- КНОПКА СВЕРНУТЬ (_)
+local minimizeBtn = create("TextButton", {
+    Size = UDim2.new(0, 24, 0, 24),
+    Position = UDim2.new(1, -56, 0.5, -12),
+    BackgroundColor3 = Theme.control,
+    Text = "_",
+    TextColor3 = Theme.text,
+    Font = FONT_B,
+    TextSize = 14,
+}, {})
+addCorner(minimizeBtn, 6)
+minimizeBtn.Parent = header
+
     -- Tabs strip
 	do
     local dragging = false
@@ -899,6 +925,18 @@ end
     content.Parent = window
     addPadding(content, 6)
 
+local minimized = false
+
+minimizeBtn.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    tabsStrip.Visible = not minimized
+    content.Visible = not minimized
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    gui:Destroy()
+end)
+
     local api = {}
 
     local tabs = {}
@@ -936,6 +974,8 @@ btn.MouseLeave:Connect(function()
 end)
         btn.Parent = tabsStrip
 recalcTabsCanvas()
+
+
         -- Tab page
         local page = create("Frame", {
             Size = UDim2.new(1, 0, 1, 0),
@@ -1923,6 +1963,101 @@ end
         leftTitle.Text = leftText
         rightTitle.Text = rightText
     end
+
+-- MOBILE TOGGLE BUTTON
+if isMobile() then
+    local toggleBtn = create("TextButton", {
+        Size = UDim2.new(0, 60, 0, 60),
+        Position = UDim2.new(0, 20, 0.5, 0),
+        BackgroundColor3 = Theme.accent,
+        Text = "UI",
+        TextColor3 = Color3.new(1,1,1),
+        Font = FONT_B,
+        TextSize = 16,
+    }, {})
+    toggleBtn.Parent = gui
+    addCorner(toggleBtn, 12)
+
+    local dragging = false
+    local dragStart, startPos
+
+    toggleBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleBtn.Position
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            toggleBtn.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        window.Visible = not window.Visible
+    end)
+end
+
+if isMobile() then
+    local toggleBtn = create("TextButton", {
+        Size = UDim2.new(0, 60, 0, 60),
+        Position = UDim2.new(0, 20, 0.5, 0),
+        BackgroundColor3 = Theme.accent,
+        Text = "UI",
+        TextColor3 = Color3.new(1,1,1),
+        Font = FONT_B,
+        TextSize = 16,
+    }, {})
+    toggleBtn.Parent = gui
+    addCorner(toggleBtn, 12)
+
+    local dragging = false
+    local dragStart, startPos
+
+    toggleBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleBtn.Position
+        end
+    end)
+
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.Touch then
+            local delta = input.Position - dragStart
+            toggleBtn.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        window.Visible = not window.Visible
+    end)
+end
 
     return api
 end
