@@ -827,17 +827,17 @@ function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
     }, {})
     leftTitle.Parent = header
 
-    local rightTitle = create("TextLabel", {
-        Size = UDim2.new(0.5, -8, 1, 0),
-        Position = UDim2.new(0.5, 0, 0, 0),
-        BackgroundTransparency = 1,
-        Text = nameRight or "",
-        TextColor3 = Theme.textDim,
-        Font = FONT,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Right,
-    }, {})
-    rightTitle.Parent = header
+local rightTitle = create("TextLabel", {
+    Size = UDim2.new(1, -120, 1, 0), -- оставляем место справа
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Text = nameRight or "",
+    TextColor3 = Theme.textDim,
+    Font = FONT,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Right,
+}, {})
+rightTitle.Parent = header
 
 -- КНОПКА ЗАКРЫТЬ (X)
 local closeBtn = create("TextButton", {
@@ -927,9 +927,68 @@ end
 
 local hidden = false
 
+local shownHint = false
+
+local function showHint()
+    if shownHint then return end
+    if isMobile() then return end
+
+    shownHint = true
+
+    local notif = create("Frame", {
+        Size = UDim2.new(0, 260, 0, 90),
+Position = UDim2.new(1, -270, 1, -100),
+AnchorPoint = Vector2.new(0, 0),
+        BackgroundColor3 = Theme.panel,
+        ZIndex = 999,
+    }, {})
+    notif.Parent = gui
+    addCorner(notif, 10)
+    addStroke(notif, Theme.stroke, 1, 0.4)
+
+    local text = create("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 40),
+        Position = UDim2.new(0, 10, 0, 10),
+        BackgroundTransparency = 1,
+        Text = "Press RightShift to open UI again",
+        TextColor3 = Theme.text,
+        Font = FONT,
+        TextSize = 14,
+        TextWrapped = true,
+    }, {})
+    text.Parent = notif
+
+    local ok = create("TextButton", {
+        Size = UDim2.new(0.4, 0, 0, 28),
+        Position = UDim2.new(0.3, 0, 1, -36),
+        BackgroundColor3 = Theme.accent,
+        Text = "OK",
+        TextColor3 = Color3.new(1,1,1),
+        Font = FONT_B,
+        TextSize = 14,
+    }, {})
+    addCorner(ok, 6)
+    ok.Parent = notif
+
+    ok.MouseButton1Click:Connect(function()
+        notif:Destroy()
+    end)
+
+    -- автоудаление (опционально)
+    task.delay(8, function()
+        if notif and notif.Parent then
+            notif:Destroy()
+        end
+    end)
+end
+
 minimizeBtn.MouseButton1Click:Connect(function()
-    hidden = not hidden
-    window.Visible = not hidden
+hidden = not hidden
+window.Visible = not hidden
+
+if hidden then
+    showHint()
+end
 end)
 
 closeBtn.MouseButton1Click:Connect(function()
@@ -940,8 +999,12 @@ UIS.InputBegan:Connect(function(input, gp)
     if gp then return end
 
     if input.KeyCode == Enum.KeyCode.RightShift then
-        hidden = not hidden
-        window.Visible = not hidden
+hidden = not hidden
+window.Visible = not hidden
+
+if hidden then
+    showHint()
+end
     end
 end)
 
