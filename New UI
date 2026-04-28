@@ -5,6 +5,50 @@ local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
+local keybinds = {}
+local currentBindRecorder
+
+local function addKeybind(key, fn)
+    if not key then return end
+    local list = keybinds[key]
+    if not list then
+        list = {}
+        keybinds[key] = list
+    end
+    table.insert(list, fn)
+end
+
+local function removeKeybind(key, fn)
+    if not key then return end
+    local list = keybinds[key]
+    if not list then return end
+    for i = #list, 1, -1 do
+        if list[i] == fn then
+            table.remove(list, i)
+        end
+    end
+    if list and #list == 0 then
+        keybinds[key] = nil
+    end
+end
+
+UIS.InputBegan:Connect(function(input, gp)
+    if gp then return end
+
+    if currentBindRecorder and input.UserInputType == Enum.UserInputType.Keyboard then
+        currentBindRecorder(input.KeyCode)
+        currentBindRecorder = nil
+        return
+    end
+
+    local list = keybinds[input.KeyCode]
+    if list then
+        for _, fn in ipairs(list) do
+            fn()
+        end
+    end
+end)
+
 local LocalPlayer = Players.LocalPlayer
 
 local function create(instance, props, children)
@@ -96,6 +140,7 @@ local RoundedUI = {}
 
 local function createColorPickerPopup(rootGui, startColor, onApply)
     -- Overlay (полное затемнение, покрывает safe area)
+local connections = {}
     local overlay = create("TextButton", {
         Name = "ColorPickerOverlay",
         Position = UDim2.new(0, 0, 0, 0),
@@ -627,7 +672,7 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
 
     -- Global input handling (mouse + touch)
-    UIS.InputChanged:Connect(function(input)
+table.insert(connections, UIS.InputChanged:Connect(function(input)
         local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
         local isTouchMove = input.UserInputType == Enum.UserInputType.Touch
 
@@ -694,12 +739,12 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
     end)
 
     -- End drag on mouse/touch
-    UIS.InputEnded:Connect(function(input)
+    table.insert(connections, UIS.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             draggingPicker = false
             draggingHue = false
         end
-    end)
+    end))
 
 
     -- RGB input handlers
@@ -745,6 +790,10 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
         if onApply then
             onApply(Color3.fromHSV(H, S, V))
         end
+
+for _, c in ipairs(connections) do
+    c:Disconnect()
+end
         overlay:Destroy()
         if _prevIgnoreGuiInset ~= nil then
             rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
@@ -753,6 +802,10 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
 
     cancelBtn.MouseButton1Click:Connect(function()
+
+for _, c in ipairs(connections) do
+    c:Disconnect()
+end
         overlay:Destroy()
         if _prevIgnoreGuiInset ~= nil then
             rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
@@ -761,9 +814,12 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
 
 
     -- Click outside to close
-    overlay.MouseButton1Click:Connect(function()
+    table.insert(connections, overlay.MouseButton1Click:Connect(function()
         local mouse = UIS:GetMouseLocation()
-        local pos = Vector2.new(mouse.X, mouse.Y - 36)
+local GuiService = game:GetService("GuiService")
+local inset = GuiService:GetGuiInset()
+
+local pos = Vector2.new(mouse.X, mouse.Y - inset.Y)
         local p0 = popup.AbsolutePosition
         local ps = popup.AbsoluteSize
 
@@ -771,12 +827,16 @@ addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
                       pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
 
         if not inside then
+
+for _, c in ipairs(connections) do
+    c:Disconnect()
+end
             overlay:Destroy()
             if _prevIgnoreGuiInset ~= nil then
                 rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
             end
         end
-    end)
+    end))
 
 
     -- Initial update
@@ -879,7 +939,7 @@ minimizeBtn.Parent = header
         end
     end)
 
-    UIS.InputChanged:Connect(function(input)
+UIS.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
             window.Position = UDim2.new(
@@ -982,6 +1042,15 @@ AnchorPoint = Vector2.new(0, 0),
     end)
 end
 
+addKeybind(Enum.KeyCode.RightShift, function()
+    hidden = not hidden
+    window.Visible = not hidden
+
+    if hidden then
+        showHint()
+    end
+end)
+
 minimizeBtn.MouseButton1Click:Connect(function()
 hidden = not hidden
 window.Visible = not hidden
@@ -993,19 +1062,6 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
     gui:Destroy()
-end)
-
-UIS.InputBegan:Connect(function(input, gp)
-    if gp then return end
-
-    if input.KeyCode == Enum.KeyCode.RightShift then
-hidden = not hidden
-window.Visible = not hidden
-
-if hidden then
-    showHint()
-end
-    end
 end)
 
 
@@ -1249,32 +1305,38 @@ function sectionAPI:ToggleWithBind(text, opts)
         setState(not state)
     end)
 
+    local function onBind()
+        setState(not state)
+        if onTrigger then
+            onTrigger(state, bindKey)
+        end
+    end
+
+    local function updateBind(newKey)
+        removeKeybind(bindKey, onBind)
+        bindKey = newKey
+        keyBtn.Text = bindKey.Name
+        keyBtn.BackgroundColor3 = Theme.control
+        addKeybind(bindKey, onBind)
+    end
+
     keyBtn.MouseButton1Click:Connect(function()
         recording = true
         keyBtn.Text = "Press key..."
         keyBtn.BackgroundColor3 = Theme.accentDim
-    end)
-
-    UIS.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if recording and input.UserInputType == Enum.UserInputType.Keyboard then
-            bindKey = input.KeyCode
-            keyBtn.Text = bindKey.Name
-            keyBtn.BackgroundColor3 = Theme.control
+        currentBindRecorder = function(newKey)
+            updateBind(newKey)
             recording = false
-        elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then
-            -- триггер по бинде
-            setState(not state)
-            if onTrigger then onTrigger(state, bindKey) end
         end
     end)
+
+    updateBind(bindKey)
 
     return {
         Set = setState,
         Get = function() return state end,
         SetBind = function(newKey)
-            bindKey = newKey
-            keyBtn.Text = bindKey.Name
+            updateBind(newKey)
         end
     }
 end
@@ -1361,19 +1423,24 @@ end
                 local hint = sectionAPI:Label(("Bind: %s"):format(tostring(bindKey)))
                 hint.TextColor3 = Theme.textDim
 
-                UIS.InputBegan:Connect(function(input, gp)
-                    if gp then return end
-                    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then
-                        toggle.Set(not toggle.Get())
-                    end
-                end)
+                local function onBind()
+                    toggle.Set(not toggle.Get())
+                end
+
+                local function updateBind(newKey)
+                    removeKeybind(bindKey, onBind)
+                    bindKey = newKey
+                    hint.Text = ("Bind: %s"):format(tostring(bindKey))
+                    addKeybind(bindKey, onBind)
+                end
+
+                updateBind(bindKey)
 
                 return {
                     Set = toggle.Set,
                     Get = toggle.Get,
                     SetBind = function(newKey)
-                        bindKey = newKey
-                        hint.Text = ("Bind: %s"):format(tostring(bindKey))
+                        updateBind(newKey)
                     end
                 }
             end
@@ -1470,17 +1537,21 @@ function sectionAPI:Slider(text, cfg, callback)
     bar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local conn
+			local endConn
+
             conn = UIS.InputChanged:Connect(function(ch)
                 if ch.UserInputType == Enum.UserInputType.MouseMovement or ch.UserInputType == Enum.UserInputType.Touch then
                     local rel = math.clamp((ch.Position.X - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
                     set(min + (max - min) * rel)
                 end
             end)
-            UIS.InputEnded:Connect(function(endInput)
-                if endInput.UserInputType == input.UserInputType then
-                    if conn then conn:Disconnect() end
-                end
-            end)
+
+			endConn = UIS.InputEnded:Connect(function(endInput)
+			    if endInput.UserInputType == input.UserInputType then
+			        if conn then conn:Disconnect() end
+			        if endConn then endConn:Disconnect() end
+			    end
+			end)
         end
     end)
 
@@ -1794,28 +1865,33 @@ function sectionAPI:TextBind(labelText, initKey, callback)
     local bindKey: Enum.KeyCode = initKey or Enum.KeyCode.RightShift
     local recording = false
 
+    local function onBind()
+        if callback then callback() end
+    end
+
+    local function updateBind(newKey)
+        removeKeybind(bindKey, onBind)
+        bindKey = newKey
+        keyBtn.Text = bindKey.Name
+        keyBtn.BackgroundColor3 = Theme.control
+        addKeybind(bindKey, onBind)
+    end
+
+    updateBind(bindKey)
+
     keyBtn.MouseButton1Click:Connect(function()
         recording = true
         keyBtn.Text = "Press key..."
         keyBtn.BackgroundColor3 = Theme.accentDim
-    end)
-
-    UIS.InputBegan:Connect(function(input, gp)
-        if gp then return end
-        if recording and input.UserInputType == Enum.UserInputType.Keyboard then
-            bindKey = input.KeyCode
-            keyBtn.Text = bindKey.Name
-            keyBtn.BackgroundColor3 = Theme.control
+        currentBindRecorder = function(newKey)
+            updateBind(newKey)
             recording = false
-        elseif input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == bindKey then
-            if callback then callback() end
         end
     end)
 
     return {
         SetBind = function(newKey)
-            bindKey = newKey
-            keyBtn.Text = bindKey.Name
+            updateBind(newKey)
         end
     }
 end
@@ -2061,7 +2137,7 @@ if isMobile() then
         end
     end)
 
-    UIS.InputChanged:Connect(function(input)
+UIS.InputChanged:Connect(function(input)
         if dragging and input.UserInputType == Enum.UserInputType.Touch then
             local delta = input.Position - dragStart
             toggleBtn.Position = UDim2.new(
