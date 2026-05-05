@@ -848,10 +848,14 @@ function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
     local gui = create("ScreenGui", {
         Name = "RoundedUI",
         ResetOnSpawn = false,
-        IgnoreGuiInset = false,
+        IgnoreGuiInset = true,
         ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     }, {})
-    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local CoreGui = game:GetService("CoreGui")
+
+gui.DisplayOrder = 2147483647
+gui.Parent = CoreGui
 
     local window = create("Frame", {
         Name = "Window",
