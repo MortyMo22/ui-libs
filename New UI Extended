@@ -1,0 +1,1909 @@
+--!strict
+-- RoundedUI: Extended version with ScrollList, Card, Row, Container, SearchBox, Pagination, and VirtualList
+-- This file extends the base RoundedUI library with additional components for complex UIs
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+local keybinds = {}
+local currentBindRecorder
+
+local function addKeybind(key, fn)
+	if not key then return end
+	local list = keybinds[key]
+	if not list then
+		list = {}
+		keybinds[key] = list
+	end
+	table.insert(list, fn)
+end
+
+local function removeKeybind(key, fn)
+	if not key then return end
+	local list = keybinds[key]
+	if not list then return end
+	for i = #list, 1, -1 do
+		if list[i] == fn then
+			table.remove(list, i)
+		end
+	end
+	if list and #list == 0 then
+		keybinds[key] = nil
+	end
+end
+
+UIS.InputBegan:Connect(function(input, gp)
+	if gp then return end
+
+	if currentBindRecorder and input.UserInputType == Enum.UserInputType.Keyboard then
+		currentBindRecorder(input.KeyCode)
+		currentBindRecorder = nil
+		return
+	end
+
+	local list = keybinds[input.KeyCode]
+	if list then
+		for _, fn in ipairs(list) do
+			fn()
+		end
+	end
+end)
+
+local LocalPlayer = Players.LocalPlayer
+
+local function create(instance, props, children)
+	local obj = Instance.new(instance)
+	for k, v in pairs(props or {}) do
+		obj[k] = v
+	end
+	for _, child in ipairs(children or {}) do
+		child.Parent = obj
+	end
+	return obj
+end
+
+local function addCorner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius or 8)
+	c.Parent = parent
+	return c
+end
+
+local function addStroke(parent, color, thickness, transparency)
+	local s = Instance.new("UIStroke")
+	s.Color = color or Color3.fromRGB(60, 60, 60)
+	s.Thickness = thickness or 1
+	s.Transparency = transparency or 0.4
+	s.Parent = parent
+	return s
+end
+
+local function addPadding(parent, pad)
+	local p = Instance.new("UIPadding")
+	p.PaddingTop = UDim.new(0, pad)
+	p.PaddingBottom = UDim.new(0, pad)
+	p.PaddingLeft = UDim.new(0, pad)
+	p.PaddingRight = UDim.new(0, pad)
+	p.Parent = parent
+	return p
+end
+
+local function withHover(btn, base, hover)
+	btn.MouseEnter:Connect(function()
+		btn.BackgroundColor3 = hover
+	end)
+	btn.MouseLeave:Connect(function()
+		btn.BackgroundColor3 = base
+	end)
+end
+
+local function isMobile()
+	return UIS.TouchEnabled and not UIS.KeyboardEnabled
+end
+
+local Theme = {
+	bg = Color3.fromRGB(20, 20, 24),
+	panel = Color3.fromRGB(28, 28, 34),
+	panel2 = Color3.fromRGB(32, 32, 40),
+	stroke = Color3.fromRGB(60, 60, 70),
+	accent = Color3.fromRGB(140, 90, 255),
+	accentDim = Color3.fromRGB(110, 70, 210),
+	text = Color3.fromRGB(230, 230, 240),
+	textDim = Color3.fromRGB(180, 180, 190),
+	good = Color3.fromRGB(90, 200, 120),
+	warn = Color3.fromRGB(230, 80, 80),
+	control = Color3.fromRGB(45, 45, 55),
+	hover = Color3.fromRGB(55, 55, 70),
+}
+
+local FONT = Enum.Font.Gotham
+local FONT_B = Enum.Font.GothamBold
+
+local RoundedUI = {}
+
+-- ============================================================================
+-- EXTENDED COMPONENTS
+-- ============================================================================
+
+-- ============================================================================
+-- 1. ScrollList - Скроллируемый список с автоматическим расчётом высоты
+-- ============================================================================
+
+local function createScrollList(parentFrame, title, options)
+	options = options or {}
+	local height = options.Height
+	local maxHeight = options.MaxHeight
+	local padding = options.Padding or 6
+
+	-- Контейнер для списка
+	local listContainer = create("Frame", {
+		Name = "ScrollListContainer",
+		Size = height and UDim2.new(1, 0, 0, height) or UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Theme.panel2,
+		BorderSizePixel = 0,
+	}, {})
+	listContainer.Parent = parentFrame
+	addCorner(listContainer, 8)
+	addStroke(listContainer, Theme.stroke, 1, 0.4)
+
+	-- ScrollingFrame внутри
+	local scrollFrame = create("ScrollingFrame", {
+		Name = "ScrollList",
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 6,
+		CanvasSize = UDim2.new(1, 0, 0, 0), -- будет пересчитана
+	}, {})
+	scrollFrame.Parent = listContainer
+
+	-- UIListLayout для вертикального расположения
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.Padding = UDim.new(0, padding)
+	layout.Parent = scrollFrame
+
+	addPadding(scrollFrame, padding)
+
+	-- Объект API для управления списком
+	local scrollListAPI = {
+		_frame = scrollFrame,
+		_container = listContainer,
+		_layout = layout,
+		_items = {},
+	}
+
+	-- Метод: добавить элемент в список
+	function scrollListAPI:AddItem(frame)
+		frame.Parent = scrollFrame
+		table.insert(self._items, frame)
+		self:_updateCanvasSize()
+	end
+
+	-- Метод: очистить список
+	function scrollListAPI:Clear()
+		for _, item in ipairs(self._items) do
+			item:Destroy()
+		end
+		self._items = {}
+		self:_updateCanvasSize()
+	end
+
+	-- Метод: изменить отступ между элементами
+	function scrollListAPI:SetPadding(px)
+		self._layout.Padding = UDim.new(0, px)
+		self:_updateCanvasSize()
+	end
+
+	-- Метод: установить высоту списка
+	function scrollListAPI:SetHeight(px)
+		self._container.Size = UDim2.new(1, 0, 0, px)
+		self:_updateCanvasSize()
+	end
+
+	-- Метод: установить максимальную высоту
+	function scrollListAPI:SetMaxHeight(px)
+		if px then
+			self._container.Size = UDim2.new(1, 0, 0, math.min(px, self:_calculateNeededHeight()))
+		end
+		self:_updateCanvasSize()
+	end
+
+	-- Метод: получить ScrollingFrame
+	function scrollListAPI:GetFrame()
+		return self._frame
+	end
+
+	-- Внутренний метод: пересчёт размера канваса
+	function scrollListAPI:_updateCanvasSize()
+		local totalHeight = 0
+		for _, item in ipairs(self._items) do
+			totalHeight = totalHeight + item.AbsoluteSize.Y
+		end
+		totalHeight = totalHeight + (padding * (#self._items - 1)) + (padding * 2)
+		self._frame.CanvasSize = UDim2.new(1, 0, 0, totalHeight)
+	end
+
+	-- Внутренний метод: вычислить нужную высоту
+	function scrollListAPI:_calculateNeededHeight()
+		local totalHeight = 0
+		for _, item in ipairs(self._items) do
+			totalHeight = totalHeight + item.AbsoluteSize.Y
+		end
+		return totalHeight + (padding * math.max(0, #self._items - 1)) + (padding * 2)
+	end
+
+	-- Обновить размер канваса при изменении размера элементов
+	layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		scrollListAPI:_updateCanvasSize()
+	end)
+
+	return scrollListAPI
+end
+
+-- ============================================================================
+-- 2. Card - Карточка с методами для добавления содержимого
+-- ============================================================================
+
+local function createCard(parentFrame)
+	-- Сама карточка
+	local cardFrame = create("Frame", {
+		Name = "Card",
+		Size = UDim2.new(1, 0, 0, 0), -- будет подстраиваться
+		BackgroundColor3 = Theme.panel2,
+		BorderSizePixel = 0,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, {})
+	cardFrame.Parent = parentFrame
+	addCorner(cardFrame, 8)
+	addStroke(cardFrame, Theme.stroke, 1, 0.4)
+	addPadding(cardFrame, 8)
+
+	-- UIListLayout для вертикального расположения элементов в карточке
+	local cardLayout = Instance.new("UIListLayout")
+	cardLayout.FillDirection = Enum.FillDirection.Vertical
+	cardLayout.Padding = UDim.new(0, 6)
+	cardLayout.Parent = cardFrame
+
+	-- Объект API для управления карточкой
+	local cardAPI = {
+		_frame = cardFrame,
+		_layout = cardLayout,
+	}
+
+	-- Метод: добавить Label в карточку
+	function cardAPI:Label(text, props)
+		props = props or {}
+		local bold = props.bold or false
+		local size = props.size or 14
+		local color = props.color or Theme.text
+		local align = props.align or Enum.TextXAlignment.Left
+
+		local label = create("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 20),
+			BackgroundTransparency = 1,
+			Text = text,
+			TextColor3 = color,
+			Font = bold and FONT_B or FONT,
+			TextSize = size,
+			TextXAlignment = align,
+			TextWrapped = true,
+		}, {})
+		label.Parent = cardFrame
+
+		return label
+	end
+
+	-- Метод: добавить Button в карточку
+	function cardAPI:Button(text, callback, props)
+		props = props or {}
+		local size = props.size or 14
+
+		local btn = create("TextButton", {
+			Size = UDim2.new(1, 0, 0, 36),
+			BackgroundColor3 = Theme.accent,
+			Text = text,
+			TextColor3 = Theme.text,
+			Font = FONT_B,
+			TextSize = size,
+		}, {})
+		btn.Parent = cardFrame
+		addCorner(btn, 6)
+		withHover(btn, Theme.accent, Theme.accentDim)
+
+		btn.MouseButton1Click:Connect(callback)
+
+		return btn
+	end
+
+	-- Метод: добавить Row (горизонтальный контейнер)
+	function cardAPI:Row(rowProps)
+		rowProps = rowProps or {}
+		local rowAlign = rowProps.Align or "Left"
+		local rowSpacing = rowProps.Spacing or 8
+
+		local rowFrame = create("Frame", {
+			Size = UDim2.new(1, 0, 0, 0),
+			BackgroundTransparency = 1,
+			AutomaticSize = Enum.AutomaticSize.Y,
+		}, {})
+		rowFrame.Parent = cardFrame
+
+		local rowLayout = Instance.new("UIListLayout")
+		rowLayout.FillDirection = Enum.FillDirection.Horizontal
+		rowLayout.Padding = UDim.new(0, rowSpacing)
+		
+		if rowAlign == "Center" then
+			rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		elseif rowAlign == "Right" then
+			rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+		else
+			rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+		end
+		
+		rowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+		rowLayout.Parent = rowFrame
+
+		addPadding(rowFrame, 0)
+
+		local rowAPI = {
+			_frame = rowFrame,
+			_layout = rowLayout,
+		}
+
+		-- Метод: добавить Label в Row
+		function rowAPI:Label(text, labelProps)
+			labelProps = labelProps or {}
+			local bold = labelProps.bold or false
+			local size = labelProps.size or 12
+			local color = labelProps.color or Theme.text
+
+			local label = create("TextLabel", {
+				Size = UDim2.new(0, 0, 0, 20),
+				BackgroundTransparency = 1,
+				Text = text,
+				TextColor3 = color,
+				Font = bold and FONT_B or FONT,
+				TextSize = size,
+				TextScaled = false,
+				AutomaticSize = Enum.AutomaticSize.XY,
+			}, {})
+			label.Parent = rowFrame
+
+			return label
+		end
+
+		-- Метод: добавить Button в Row
+		function rowAPI:Button(text, btnCallback, btnProps)
+			btnProps = btnProps or {}
+			local size = btnProps.size or 12
+
+			local btn = create("TextButton", {
+				Size = UDim2.new(0, 80, 0, 28),
+				BackgroundColor3 = Theme.accent,
+				Text = text,
+				TextColor3 = Theme.text,
+				Font = FONT_B,
+				TextSize = size,
+			}, {})
+			btn.Parent = rowFrame
+			addCorner(btn, 6)
+			withHover(btn, Theme.accent, Theme.accentDim)
+
+			btn.MouseButton1Click:Connect(btnCallback)
+
+			return btn
+		end
+
+		-- Метод: добавить кастомный объект в Row
+		function rowAPI:AddCustom(instance)
+			instance.Parent = rowFrame
+			return instance
+		end
+
+		-- Метод: получить сам Frame
+		function rowAPI:GetFrame()
+			return self._frame
+		end
+
+		return rowAPI
+	end
+
+	-- Метод: получить сам Frame карточки
+	function cardAPI:GetFrame()
+		return self._frame
+	end
+
+	return cardAPI
+end
+
+-- ============================================================================
+-- 3. Container / MountCustom - Контейнер для кастомного UI
+-- ============================================================================
+
+local function createContainer(parentFrame, options)
+	options = options or {}
+	local height = options.Height
+	local scrollable = options.Scrollable or false
+
+	if scrollable then
+		-- Создаём ScrollingFrame
+		local container = create("ScrollingFrame", {
+			Name = "CustomContainer",
+			Size = height and UDim2.new(1, 0, 0, height) or UDim2.new(1, 0, 1, 0),
+			BackgroundColor3 = Theme.panel2,
+			BorderSizePixel = 0,
+			ScrollBarThickness = 6,
+			CanvasSize = UDim2.new(1, 0, 2, 0),
+		}, {})
+		container.Parent = parentFrame
+		addCorner(container, 8)
+		addStroke(container, Theme.stroke, 1, 0.4)
+		addPadding(container, 6)
+
+		local containerAPI = {
+			_frame = container,
+		}
+
+		function containerAPI:Mount(instance)
+			instance.Parent = container
+		end
+
+		function containerAPI:GetFrame()
+			return self._frame
+		end
+
+		return containerAPI
+	else
+		-- Создаём обычный Frame
+		local container = create("Frame", {
+			Name = "CustomContainer",
+			Size = height and UDim2.new(1, 0, 0, height) or UDim2.new(1, 0, 1, 0),
+			BackgroundColor3 = Theme.panel2,
+			BorderSizePixel = 0,
+		}, {})
+		container.Parent = parentFrame
+		addCorner(container, 8)
+		addStroke(container, Theme.stroke, 1, 0.4)
+		addPadding(container, 6)
+
+		local containerAPI = {
+			_frame = container,
+		}
+
+		function containerAPI:Mount(instance)
+			instance.Parent = container
+		end
+
+		function containerAPI:GetFrame()
+			return self._frame
+		end
+
+		return containerAPI
+	end
+end
+
+-- ============================================================================
+-- 4. SearchBox - Поле поиска с иконкой и стилем
+-- ============================================================================
+
+local function createSearchBox(parentFrame, placeholder, callback, options)
+	options = options or {}
+	local placeholderColor = options.PlaceholderColor or Theme.textDim
+	local textColor = options.TextColor or Theme.text
+
+	-- Контейнер для SearchBox
+	local searchContainer = create("Frame", {
+		Name = "SearchBoxContainer",
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundColor3 = Theme.control,
+		BorderSizePixel = 0,
+	}, {})
+	searchContainer.Parent = parentFrame
+	addCorner(searchContainer, 8)
+	addStroke(searchContainer, Theme.stroke, 1, 0.4)
+
+	-- Иконка поиска (текст 🔍)
+	local iconLabel = create("TextLabel", {
+		Size = UDim2.new(0, 40, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "🔍",
+		TextColor3 = Theme.textDim,
+		Font = FONT,
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Center,
+	}, {})
+	iconLabel.Parent = searchContainer
+
+	-- TextBox для ввода
+	local textBox = create("TextBox", {
+		Name = "SearchInput",
+		Size = UDim2.new(1, -50, 1, 0),
+		Position = UDim2.new(0, 40, 0, 0),
+		BackgroundTransparency = 1,
+		PlaceholderText = placeholder or "Search...",
+		PlaceholderColor3 = placeholderColor,
+		Text = "",
+		TextColor3 = textColor,
+		Font = FONT,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ClearTextOnFocus = false,
+	}, {})
+	textBox.Parent = searchContainer
+
+	-- API для управления SearchBox
+	local searchAPI = {
+		_textBox = textBox,
+		_container = searchContainer,
+	}
+
+	-- Метод: установить текст
+	function searchAPI:SetText(text)
+		self._textBox.Text = text
+	end
+
+	-- Метод: получить текст
+	function searchAPI:GetText()
+		return self._textBox.Text
+	end
+
+	-- Метод: установить callback
+	function searchAPI:SetCallback(fn)
+		if fn then
+			self._textBox.FocusLost:Connect(fn)
+		end
+	end
+
+	-- Подключаем callback при изменении текста (FocusLost)
+	if callback then
+		textBox.FocusLost:Connect(function(enterPressed)
+			callback(textBox.Text)
+		end)
+	end
+
+	return searchAPI
+end
+
+-- ============================================================================
+-- 5. Pagination - Компонент для управления страницами
+-- ============================================================================
+
+local function createPagination(parentFrame, options)
+	options = options or {}
+	local align = options.Align or "Center"
+
+	-- Контейнер для пагинации
+	local pagerContainer = create("Frame", {
+		Name = "PaginationContainer",
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	}, {})
+	pagerContainer.Parent = parentFrame
+
+	local pagerLayout = Instance.new("UIListLayout")
+	pagerLayout.FillDirection = Enum.FillDirection.Horizontal
+	pagerLayout.Padding = UDim.new(0, 8)
+	
+	if align == "Center" then
+		pagerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	elseif align == "Right" then
+		pagerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	else
+		pagerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	end
+	
+	pagerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	pagerLayout.Parent = pagerContainer
+
+	-- Кнопка Prev
+	local prevBtn = create("TextButton", {
+		Size = UDim2.new(0, 80, 1, 0),
+		BackgroundColor3 = Theme.control,
+		Text = "◄ Prev",
+		TextColor3 = Theme.text,
+		Font = FONT_B,
+		TextSize = 14,
+	}, {})
+	prevBtn.Parent = pagerContainer
+	addCorner(prevBtn, 6)
+	withHover(prevBtn, Theme.control, Theme.hover)
+
+	-- Label с текущей страницей
+	local pageLabel = create("TextLabel", {
+		Size = UDim2.new(0, 100, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "Page 1",
+		TextColor3 = Theme.text,
+		Font = FONT,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Center,
+	}, {})
+	pageLabel.Parent = pagerContainer
+
+	-- Кнопка Next
+	local nextBtn = create("TextButton", {
+		Size = UDim2.new(0, 80, 1, 0),
+		BackgroundColor3 = Theme.control,
+		Text = "Next ►",
+		TextColor3 = Theme.text,
+		Font = FONT_B,
+		TextSize = 14,
+	}, {})
+	nextBtn.Parent = pagerContainer
+	addCorner(nextBtn, 6)
+	withHover(nextBtn, Theme.control, Theme.hover)
+
+	-- API для управления пагинацией
+	local pagerAPI = {
+		_prevBtn = prevBtn,
+		_nextBtn = nextBtn,
+		_pageLabel = pageLabel,
+		_currentPage = 1,
+		_hasNext = false,
+		_hasPrev = false,
+		OnNext = nil,
+		OnPrev = nil,
+	}
+
+	-- Метод: установить текущую страницу
+	function pagerAPI:SetPage(page)
+		self._currentPage = page
+		self._pageLabel.Text = "Page " .. tostring(page)
+	end
+
+	-- Метод: указать, есть ли следующая страница
+	function pagerAPI:SetHasNext(has)
+		self._hasNext = has
+		self._nextBtn.TextTransparency = has and 0 or 0.5
+		self._nextBtn.Active = has
+	end
+
+	-- Метод: указать, есть ли предыдущая страница
+	function pagerAPI:SetHasPrev(has)
+		self._hasPrev = has
+		self._prevBtn.TextTransparency = has and 0 or 0.5
+		self._prevBtn.Active = has
+	end
+
+	-- Метод: включить/отключить пагинацию
+	function pagerAPI:SetEnabled(enabled)
+		self._nextBtn.Active = enabled
+		self._prevBtn.Active = enabled
+	end
+
+	-- Подключаем кнопки
+	nextBtn.MouseButton1Click:Connect(function()
+		if pagerAPI._hasNext and pagerAPI.OnNext then
+			pagerAPI.OnNext()
+		end
+	end)
+
+	prevBtn.MouseButton1Click:Connect(function()
+		if pagerAPI._hasPrev and pagerAPI.OnPrev then
+			pagerAPI.OnPrev()
+		end
+	end)
+
+	return pagerAPI
+end
+
+-- ============================================================================
+-- 6. VirtualList - Виртуализированный список для больших данных
+-- ============================================================================
+
+local function createVirtualList(parentFrame, options)
+	options = options or {}
+	local height = options.Height or 260
+	local itemHeight = options.ItemHeight or 60
+
+	-- Контейнер
+	local vlistContainer = create("Frame", {
+		Name = "VirtualListContainer",
+		Size = UDim2.new(1, 0, 0, height),
+		BackgroundColor3 = Theme.panel2,
+		BorderSizePixel = 0,
+	}, {})
+	vlistContainer.Parent = parentFrame
+	addCorner(vlistContainer, 8)
+	addStroke(vlistContainer, Theme.stroke, 1, 0.4)
+
+	-- ScrollingFrame
+	local scrollFrame = create("ScrollingFrame", {
+		Name = "VirtualListScroll",
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 6,
+		CanvasSize = UDim2.new(1, 0, 0, 0),
+	}, {})
+	scrollFrame.Parent = vlistContainer
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = scrollFrame
+
+	addPadding(scrollFrame, 4)
+
+	-- API
+	local vlistAPI = {
+		_frame = scrollFrame,
+		_container = vlistContainer,
+		_layout = layout,
+		_items = {},
+		_data = {},
+		_renderer = nil,
+		_itemHeight = itemHeight,
+	}
+
+	-- Метод: установить данные и отрисовать
+	function vlistAPI:SetItems(dataArray)
+		self._data = dataArray or {}
+		self:_render()
+	end
+
+	-- Метод: установить функцию рендеринга
+	function vlistAPI:SetRenderer(rendererFn)
+		self._renderer = rendererFn
+		self:_render()
+	end
+
+	-- Метод: добавить Card (удобство)
+	function vlistAPI:Card()
+		return createCard(scrollFrame)
+	end
+
+	-- Внутренний метод: отрисовка элементов
+	function vlistAPI:_render()
+		-- Очистить старые элементы
+		for _, item in ipairs(self._items) do
+			item:Destroy()
+		end
+		self._items = {}
+
+		-- Отрисовать новые элементы
+		if self._renderer then
+			for i, itemData in ipairs(self._data) do
+				local itemFrame = self._renderer(itemData, i)
+				if itemFrame then
+					itemFrame.Parent = scrollFrame
+					table.insert(self._items, itemFrame)
+				end
+			end
+		end
+
+		-- Обновить размер канваса
+		local totalHeight = #self._items * self._itemHeight + (4 * (#self._items - 1)) + (4 * 2)
+		scrollFrame.CanvasSize = UDim2.new(1, 0, 0, totalHeight)
+	end
+
+	-- Метод: очистить список
+	function vlistAPI:Clear()
+		for _, item in ipairs(self._items) do
+			item:Destroy()
+		end
+		self._items = {}
+		self._data = {}
+		scrollFrame.CanvasSize = UDim2.new(1, 0, 0, 0)
+	end
+
+	-- Метод: получить Frame
+	function vlistAPI:GetFrame()
+		return self._frame
+	end
+
+	return vlistAPI
+end
+
+-- ============================================================================
+-- EXTENSIONS TO SECTION - Добавляем методы к Section
+-- ============================================================================
+
+local function extendSectionWithNewComponents(sectionObj)
+	-- Метод: создать ScrollList
+	function sectionObj:ScrollList(title, options)
+		return createScrollList(sectionObj._content, title, options)
+	end
+
+	-- Метод: создать Card
+	function sectionObj:Card()
+		return createCard(sectionObj._content)
+	end
+
+	-- Метод: создать Container
+	function sectionObj:Container(options)
+		return createContainer(sectionObj._content, options)
+	end
+
+	-- Метод: создать SearchBox
+	function sectionObj:SearchBox(placeholder, callback, options)
+		return createSearchBox(sectionObj._content, placeholder, callback, options)
+	end
+
+	-- Метод: создать Pagination
+	function sectionObj:Pagination(options)
+		return createPagination(sectionObj._content, options)
+	end
+
+	-- Метод: создать VirtualList
+	function sectionObj:VirtualList(options)
+		return createVirtualList(sectionObj._content, options)
+	end
+
+	-- Метод: сделать Section скроллируемым
+	function sectionObj:SetScrollable(isScrollable, scrollOptions)
+		if not isScrollable then return end
+		
+		scrollOptions = scrollOptions or {}
+		local maxHeight = scrollOptions.MaxHeight
+
+		-- Если уже есть ScrollingFrame, не создаём новый
+		if sectionObj._content:IsA("ScrollingFrame") then
+			return
+		end
+
+		-- Получить текущих детей
+		local children = {}
+		for _, child in ipairs(sectionObj._content:GetChildren()) do
+			table.insert(children, child)
+		end
+
+		-- Создать новый ScrollingFrame
+		local newScroll = create("ScrollingFrame", {
+			Name = "SectionScroll",
+			Size = maxHeight and UDim2.new(1, 0, 0, maxHeight) or UDim2.new(1, 0, 1, 0),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ScrollBarThickness = 6,
+			CanvasSize = UDim2.new(1, 0, 2, 0),
+		}, children)
+		newScroll.Parent = sectionObj._content.Parent
+		newScroll.Position = sectionObj._content.Position
+		newScroll.LayoutOrder = sectionObj._content.LayoutOrder
+
+		-- Заменить ссылку на content
+		sectionObj._content:Destroy()
+		sectionObj._content = newScroll
+
+		-- Добавить layout
+		local layout = Instance.new("UIListLayout")
+		layout.FillDirection = Enum.FillDirection.Vertical
+		layout.Padding = UDim.new(0, 6)
+		layout.Parent = newScroll
+	end
+
+	return sectionObj
+end
+
+-- ============================================================================
+-- BASIC ROUNDEDUI FUNCTIONS (from original library)
+-- ============================================================================
+
+local function createColorPickerPopup(rootGui, startColor, onApply)
+	local connections = {}
+	local overlay = create("TextButton", {
+		Name = "ColorPickerOverlay",
+		Position = UDim2.new(0, 0, 0, 0),
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.45,
+		Text = "",
+		ZIndex = 200,
+		AutoButtonColor = false,
+	}, {})
+
+	overlay.Parent = rootGui
+	overlay.ZIndex = 200
+	overlay.Modal = true
+
+	local _prevIgnoreGuiInset = nil
+	if typeof(rootGui.IgnoreGuiInset) ~= "nil" then
+		_prevIgnoreGuiInset = rootGui.IgnoreGuiInset
+		rootGui.IgnoreGuiInset = true
+	end
+
+	local GuiService = game:GetService("GuiService")
+	local Camera = workspace.CurrentCamera
+	local viewportY = (Camera and Camera.ViewportSize and Camera.ViewportSize.Y) or 720
+	local topInset = 0
+	if GuiService and GuiService.GetGuiInset then
+		local insetVec = GuiService:GetGuiInset()
+		topInset = insetVec.Y or 0
+	end
+
+	local baseW, baseH = 340, 440
+	if viewportY < baseH + 60 then
+		local ratio = (viewportY - 60) / baseH
+		if ratio < 0.6 then ratio = 0.6 end
+		baseW = math.floor(baseW * ratio)
+		baseH = math.floor(baseH * ratio)
+	end
+
+	local popup = create("Frame", {
+		Name = "ColorPickerWindow",
+		Size = UDim2.new(0, baseW, 0, baseH),
+		Position = UDim2.new(0.5, -baseW/2, 0.5, -baseH/2),
+		BackgroundColor3 = Theme.bg,
+		ZIndex = 201,
+	}, {})
+	popup.Parent = overlay
+	addCorner(popup, 12)
+	addStroke(popup, Theme.stroke, 2, 0.4)
+
+	local titleBar = create("Frame", {
+		Name = "TitleBar",
+		Size = UDim2.new(1, 0, 0, 40),
+		BackgroundColor3 = Theme.panel2,
+		ZIndex = 202,
+	}, {})
+	titleBar.Parent = popup
+	addCorner(titleBar, 12)
+	addStroke(titleBar, Theme.stroke, 1, 0.5)
+
+	local title = create("TextLabel", {
+		Size = UDim2.new(1, -20, 1, 0),
+		Position = UDim2.new(0, 10, 0, 0),
+		BackgroundTransparency = 1,
+		Text = "Color Picker",
+		TextColor3 = Theme.text,
+		Font = FONT_B,
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 203,
+	}, {})
+	title.Parent = titleBar
+
+	local scaleRatio = 1
+	do
+		local baseHeightRef = 440
+		if baseH and type(baseH) == "number" then
+			scaleRatio = baseH / baseHeightRef
+			if scaleRatio <= 0 then scaleRatio = 1 end
+		end
+	end
+
+	local pickerSize = math.max(96, math.floor(240 * scaleRatio))
+	local contentHeight = pickerSize
+
+	local content = create("Frame", {
+		Name = "Content",
+		Size = UDim2.new(1, -24, 0, contentHeight),
+		Position = UDim2.new(0, 12, 0, 52),
+		BackgroundTransparency = 1,
+		ZIndex = 202,
+	}, {})
+	content.Parent = popup
+
+	do
+		local availableW = content.AbsoluteSize.X
+		local requiredW = pickerSize + 8 + 24 + 16 + 36
+
+		if requiredW > availableW then
+			local newPicker = math.max(96, availableW - (8 + 24 + 16 + 36))
+			pickerSize = math.floor(newPicker)
+			content.Size = UDim2.new(1, -24, 0, pickerSize)
+		end
+	end
+
+	local H, S, V = 0, 1, 1
+	if startColor then
+		H, S, V = startColor:ToHSV()
+	end
+
+	local pickerFrame = create("Frame", {
+		Name = "ColorPicker",
+		Size = UDim2.new(0, pickerSize, 0, pickerSize),
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundColor3 = Color3.fromHSV(H, 1, 1),
+		BorderSizePixel = 0,
+		ZIndex = 203,
+		ClipsDescendants = true,
+	}, {})
+	pickerFrame.Parent = content
+	addCorner(pickerFrame, 10)
+	addStroke(pickerFrame, Theme.stroke, 2, 0.3)
+
+	local satGradient = create("Frame", {
+		Name = "SaturationGradient",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		ZIndex = 204,
+	}, {})
+	satGradient.Parent = pickerFrame
+	addCorner(satGradient, 10)
+
+	local satGrad = Instance.new("UIGradient")
+	satGrad.Color = ColorSequence.new(Color3.new(1, 1, 1))
+	satGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	satGrad.Rotation = 0
+	satGrad.Parent = satGradient
+
+	local valGradient = create("Frame", {
+		Name = "ValueGradient",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		ZIndex = 205,
+	}, {})
+	valGradient.Parent = pickerFrame
+	addCorner(valGradient, 10)
+
+	local valGrad = Instance.new("UIGradient")
+	valGrad.Color = ColorSequence.new(Color3.new(0, 0, 0))
+	valGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	valGrad.Rotation = 90
+	valGrad.Parent = valGradient
+
+	local pickerButton = create("TextButton", {
+		Name = "PickerButton",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 206,
+	}, {})
+	pickerButton.Parent = pickerFrame
+
+	local cursor = create("Frame", {
+		Name = "Cursor",
+		Size = UDim2.new(0, 20, 0, 20),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		ZIndex = 207,
+	}, {})
+	cursor.Parent = pickerFrame
+
+	local cursorOuter = create("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		ZIndex = 207,
+	}, {})
+	cursorOuter.Parent = cursor
+	addCorner(cursorOuter, 10)
+
+	local cursorInner = create("Frame", {
+		Size = UDim2.new(1, -4, 1, -4),
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.new(0, 0, 0),
+		BorderSizePixel = 0,
+		ZIndex = 208,
+	}, {})
+	cursorInner.Parent = cursorOuter
+	addCorner(cursorInner, 8)
+
+	local sliderWidth = 24
+
+	local hueSlider = create("Frame", {
+		Name = "HueSlider",
+		Size = UDim2.new(0, sliderWidth, 0, pickerSize),
+		Position = UDim2.new(0, pickerSize + 8, 0, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 203,
+		ClipsDescendants = true,
+	}, {})
+	hueSlider.Parent = content
+	addCorner(hueSlider, 8)
+	addStroke(hueSlider, Theme.stroke, 2, 0.3)
+
+	local hueFill = create("Frame", {
+		Name = "HueFill",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(1, -2, 1, -2),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0,
+		BorderSizePixel = 0,
+		ZIndex = 203,
+	}, {})
+	hueFill.Parent = hueSlider
+	addCorner(hueFill, 8)
+
+	local hueGrad = Instance.new("UIGradient")
+	hueGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0.000, Color3.new(1, 0, 0)),
+		ColorSequenceKeypoint.new(0.166, Color3.new(1, 1, 0)),
+		ColorSequenceKeypoint.new(0.333, Color3.new(0, 1, 0)),
+		ColorSequenceKeypoint.new(0.500, Color3.new(0, 1, 1)),
+		ColorSequenceKeypoint.new(0.666, Color3.new(0, 0, 1)),
+		ColorSequenceKeypoint.new(0.833, Color3.new(1, 0, 1)),
+		ColorSequenceKeypoint.new(1.000, Color3.new(1, 0, 0)),
+	})
+	hueGrad.Rotation = 90
+	hueGrad.Parent = hueFill
+
+	local hueButton = create("TextButton", {
+		Name = "HueButton",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 204,
+	}, {})
+	hueButton.Parent = hueSlider
+
+	local hueCursor = create("Frame", {
+		Name = "HueCursor",
+		Size = UDim2.new(1, 6, 0, 6),
+		Position = UDim2.new(0.5, 0, 0, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		ZIndex = 205,
+	}, {})
+	hueCursor.Parent = hueSlider
+	addCorner(hueCursor, 3)
+	addStroke(hueCursor, Color3.new(0, 0, 0), 2, 0)
+
+	local preview = create("Frame", {
+		Name = "Preview",
+		Size = UDim2.new(0, 36, 0, pickerSize),
+		Position = UDim2.new(0, pickerSize + sliderWidth + 16, 0, 0),
+		BackgroundColor3 = Color3.fromHSV(H, S, V),
+		BorderSizePixel = 0,
+		ZIndex = 203,
+	}, {})
+	preview.Parent = content
+	addCorner(preview, 10)
+	addStroke(preview, Theme.stroke, 2, 0.3)
+
+	local infoPanelHeight = 90
+	local infoPanelY = pickerSize + 12
+
+	do
+		local btnHeight = 38
+		local btnGap = 12
+		local totalNeeded = infoPanelY + infoPanelHeight + btnGap + btnHeight + 12
+		if totalNeeded > baseH then
+			local overflow = totalNeeded - baseH
+			local reduceBy = math.min(math.floor(overflow + 4), infoPanelHeight - 40)
+			if reduceBy > 0 then
+				infoPanelHeight = infoPanelHeight - reduceBy
+			end
+		end
+	end
+
+	local infoPanel = create("Frame", {
+		Name = "InfoPanel",
+		Size = UDim2.new(1, -24, 0, infoPanelHeight),
+		Position = UDim2.new(0, 12, 0, infoPanelY),
+		BackgroundColor3 = Theme.panel2,
+		ZIndex = 202,
+	}, {})
+	infoPanel.Parent = popup
+	addCorner(infoPanel, 10)
+	addStroke(infoPanel, Theme.stroke, 1, 0.4)
+	addPadding(infoPanel, 10)
+
+	local function createNumberInput(name, yPos)
+		local label = create("TextLabel", {
+			Size = UDim2.new(0, 25, 0, 24),
+			Position = UDim2.new(0, 0, 0, yPos),
+			BackgroundTransparency = 1,
+			Text = name .. ":",
+			TextColor3 = Theme.textDim,
+			Font = FONT,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 203,
+		}, {})
+		label.Parent = infoPanel
+
+		local input = create("TextBox", {
+			Size = UDim2.new(0, 70, 0, 24),
+			Position = UDim2.new(0, 30, 0, yPos),
+			BackgroundColor3 = Theme.control,
+			Text = "255",
+			TextColor3 = Theme.text,
+			Font = FONT,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ClearTextOnFocus = false,
+			ZIndex = 203,
+		}, {})
+		input.Parent = infoPanel
+		addCorner(input, 6)
+		addStroke(input, Theme.stroke, 1, 0.4)
+
+		return input
+	end
+
+	local rInput = createNumberInput("R", 0)
+	local gInput = createNumberInput("G", 30)
+	local bInput = createNumberInput("B", 60)
+
+	local hexLabel = create("TextLabel", {
+		Size = UDim2.new(0, 40, 0, 24),
+		Position = UDim2.new(0, 120, 0, 30),
+		BackgroundTransparency = 1,
+		Text = "HEX:",
+		TextColor3 = Theme.textDim,
+		Font = FONT,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 203,
+	}, {})
+	hexLabel.Parent = infoPanel
+
+	local hexInput = create("TextBox", {
+		Size = UDim2.new(1, -170, 0, 24),
+		Position = UDim2.new(0, 165, 0, 30),
+		BackgroundColor3 = Theme.control,
+		Text = "#FFFFFF",
+		TextColor3 = Theme.text,
+		Font = FONT,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ClearTextOnFocus = false,
+		ZIndex = 203,
+	}, {})
+	hexInput.Parent = infoPanel
+	addCorner(hexInput, 6)
+	addStroke(hexInput, Theme.stroke, 1, 0.4)
+
+	local btnHeight = 38
+	local btnGap = 12
+	local buttonsY = infoPanelY + infoPanelHeight + btnGap
+	local buttonContainer = create("Frame", {
+		Name = "Buttons",
+		Size = UDim2.new(1, -24, 0, btnHeight),
+		Position = UDim2.new(0, 12, 0, buttonsY),
+		AnchorPoint = Vector2.new(0, 0),
+		BackgroundTransparency = 1,
+		ZIndex = 210,
+	}, {})
+	buttonContainer.Parent = popup
+
+	local cancelBtn = create("TextButton", {
+		Name = "CancelButton",
+		Size = UDim2.new(0.48, 0, 1, 0),
+		BackgroundColor3 = Theme.control,
+		Text = "Cancel",
+		TextColor3 = Theme.text,
+		Font = FONT_B,
+		TextSize = math.clamp(16, 12, 16),
+		ZIndex = 203,
+	}, {})
+	cancelBtn.Parent = buttonContainer
+	addCorner(cancelBtn, 8)
+	withHover(cancelBtn, Theme.control, Theme.hover)
+
+	local applyBtn = create("TextButton", {
+		Name = "ApplyButton",
+		Size = UDim2.new(0.48, 0, 1, 0),
+		Position = UDim2.new(0.52, 0, 0, 0),
+		BackgroundColor3 = Theme.accent,
+		Text = "Apply",
+		TextColor3 = Theme.text,
+		Font = FONT_B,
+		TextSize = math.clamp(16, 12, 16),
+		ZIndex = 203,
+	}, {})
+	applyBtn.Parent = buttonContainer
+	addCorner(applyBtn, 8)
+	withHover(applyBtn, Theme.accent, Theme.accentDim)
+
+	local updatingFromCode = false
+
+	local function updateVisuals()
+		updatingFromCode = true
+		local currentColor = Color3.fromHSV(H, S, V)
+		pickerFrame.BackgroundColor3 = Color3.fromHSV(H, 1, 1)
+		cursor.Position = UDim2.new(S, 0, 1 - V, 0)
+		hueCursor.Position = UDim2.new(0.5, 0, H, 0)
+		preview.BackgroundColor3 = currentColor
+		local r = math.floor(currentColor.R * 255 + 0.5)
+		local g = math.floor(currentColor.G * 255 + 0.5)
+		local b = math.floor(currentColor.B * 255 + 0.5)
+		rInput.Text = tostring(r)
+		gInput.Text = tostring(g)
+		bInput.Text = tostring(b)
+		hexInput.Text = "#" .. currentColor:ToHex():upper()
+		updatingFromCode = false
+	end
+
+	local draggingPicker = false
+	local draggingHue = false
+
+	pickerButton.MouseButton1Down:Connect(function(x, y)
+		draggingPicker = true
+		local gs = game:GetService("GuiService")
+		local iv = gs and gs:GetGuiInset() or Vector2.zero
+		local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+		local mx, my = x, y - insetY
+		local relX = math.clamp((mx - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+		local relY = math.clamp((my - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
+		S = relX
+		V = 1 - relY
+		updateVisuals()
+	end)
+
+	hueButton.MouseButton1Down:Connect(function(x, y)
+		draggingHue = true
+		local gs = game:GetService("GuiService")
+		local iv = gs and gs:GetGuiInset() or Vector2.zero
+		local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+		local mx, my = x, y - insetY
+		local relY = math.clamp((my - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+		H = relY
+		updateVisuals()
+	end)
+
+	table.insert(connections, UIS.InputChanged:Connect(function(input)
+		local isMouseMove = input.UserInputType == Enum.UserInputType.MouseMovement
+		local isTouchMove = input.UserInputType == Enum.UserInputType.Touch
+		if isMouseMove or isTouchMove then
+			if draggingPicker then
+				local pos = input.Position
+				local insetY = 0
+				if typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true then
+					local gs = game:GetService("GuiService")
+					local iv = gs and gs:GetGuiInset() or Vector2.zero
+					insetY = iv.Y or 0
+				end
+				local relX = math.clamp((pos.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+				local relY = math.clamp(((pos.Y - insetY) - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
+				S = relX
+				V = 1 - relY
+				updateVisuals()
+			elseif draggingHue then
+				local pos = input.Position
+				local insetY = 0
+				if typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true then
+					local gs = game:GetService("GuiService")
+					local iv = gs and gs:GetGuiInset() or Vector2.zero
+					insetY = iv.Y or 0
+				end
+				local relY = math.clamp(((pos.Y - insetY) - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+				H = relY
+				updateVisuals()
+			end
+		end
+	end))
+
+	pickerButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			draggingPicker = true
+			local gs = game:GetService("GuiService")
+			local iv = gs and gs:GetGuiInset() or Vector2.zero
+			local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+			local pos = input.Position
+			local relX = math.clamp((pos.X - pickerFrame.AbsolutePosition.X) / pickerFrame.AbsoluteSize.X, 0, 1)
+			local relY = math.clamp(((pos.Y - insetY) - pickerFrame.AbsolutePosition.Y) / pickerFrame.AbsoluteSize.Y, 0, 1)
+			S = relX
+			V = 1 - relY
+			updateVisuals()
+		end
+	end)
+
+	hueButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			draggingHue = true
+			local gs = game:GetService("GuiService")
+			local iv = gs and gs:GetGuiInset() or Vector2.zero
+			local insetY = (typeof(rootGui.IgnoreGuiInset) ~= "nil" and rootGui.IgnoreGuiInset == true) and (iv.Y or 0) or 0
+			local pos = input.Position
+			local relY = math.clamp(((pos.Y - insetY) - hueSlider.AbsolutePosition.Y) / hueSlider.AbsoluteSize.Y, 0, 1)
+			H = relY
+			updateVisuals()
+		end
+	end)
+
+	table.insert(connections, UIS.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingPicker = false
+			draggingHue = false
+		end
+	end))
+
+	local function handleRGBInput()
+		if updatingFromCode then return end
+		local r = math.clamp(tonumber(rInput.Text) or 0, 0, 255) / 255
+		local g = math.clamp(tonumber(gInput.Text) or 0, 0, 255) / 255
+		local b = math.clamp(tonumber(bInput.Text) or 0, 0, 255) / 255
+		local color = Color3.new(r, g, b)
+		H, S, V = color:ToHSV()
+		updateVisuals()
+	end
+
+	rInput.FocusLost:Connect(handleRGBInput)
+	gInput.FocusLost:Connect(handleRGBInput)
+	bInput.FocusLost:Connect(handleRGBInput)
+
+	hexInput.FocusLost:Connect(function()
+		if updatingFromCode then return end
+		local text = hexInput.Text
+		if text:sub(1, 1) == "#" then
+			text = text:sub(2)
+		end
+		local success, result = pcall(function()
+			return Color3.fromHex(text)
+		end)
+		if success then
+			H, S, V = result:ToHSV()
+			updateVisuals()
+		else
+			updateVisuals()
+		end
+	end)
+
+	applyBtn.MouseButton1Click:Connect(function()
+		if onApply then
+			onApply(Color3.fromHSV(H, S, V))
+		end
+		for _, c in ipairs(connections) do
+			c:Disconnect()
+		end
+		overlay:Destroy()
+		if _prevIgnoreGuiInset ~= nil then
+			rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
+		end
+	end)
+
+	cancelBtn.MouseButton1Click:Connect(function()
+		for _, c in ipairs(connections) do
+			c:Disconnect()
+		end
+		overlay:Destroy()
+		if _prevIgnoreGuiInset ~= nil then
+			rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
+		end
+	end)
+
+	table.insert(connections, overlay.MouseButton1Click:Connect(function()
+		local mouse = UIS:GetMouseLocation()
+		local GuiService = game:GetService("GuiService")
+		local inset = GuiService:GetGuiInset()
+		local pos = Vector2.new(mouse.X, mouse.Y - inset.Y)
+		local p0 = popup.AbsolutePosition
+		local ps = popup.AbsoluteSize
+		local inside = pos.X >= p0.X and pos.X <= p0.X + ps.X and
+					  pos.Y >= p0.Y and pos.Y <= p0.Y + ps.Y
+		if not inside then
+			for _, c in ipairs(connections) do
+				c:Disconnect()
+			end
+			overlay:Destroy()
+			if _prevIgnoreGuiInset ~= nil then
+				rootGui.IgnoreGuiInset = _prevIgnoreGuiInset
+			end
+		end
+	end))
+
+	updateVisuals()
+end
+
+-- ============================================================================
+-- MAIN API
+-- ============================================================================
+
+function RoundedUI.CreateWindow(nameLeft, nameRight)
+	local gui = create("ScreenGui", {
+		Name = "RoundedUI",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	}, {})
+
+	local CoreGui = game:GetService("CoreGui")
+	gui.DisplayOrder = 2147483647
+	gui.Parent = CoreGui
+
+	local window = create("Frame", {
+		Name = "Window",
+		Size = UDim2.new(isMobile() and 0.95 or 0.6, 0, isMobile() and 0.8 or 0.7, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = Theme.bg,
+	}, {})
+	window.Parent = gui
+	addCorner(window, 12)
+	addStroke(window, Theme.stroke, 1, 0.6)
+	addPadding(window, 10)
+
+	local header = create("Frame", {
+		Name = "Header",
+		Size = UDim2.new(1, 0, 0, 32),
+		BackgroundColor3 = Theme.panel,
+	}, {})
+	header.Parent = window
+	addCorner(header, 10)
+	addStroke(header, Theme.stroke, 1, 0.6)
+
+	local leftTitle = create("TextLabel", {
+		Size = UDim2.new(0.5, -8, 1, 0),
+		Position = UDim2.new(0, 8, 0, 0),
+		BackgroundTransparency = 1,
+		Text = nameLeft or "UI",
+		TextColor3 = Theme.text,
+		Font = FONT_B,
+		TextSize = 16,
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, {})
+	leftTitle.Parent = header
+
+	local rightTitle = create("TextLabel", {
+		Size = UDim2.new(1, -120, 1, 0),
+		Position = UDim2.new(0, 0, 0, 0),
+		BackgroundTransparency = 1,
+		Text = nameRight or "",
+		TextColor3 = Theme.textDim,
+		Font = FONT,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Right,
+	}, {})
+	rightTitle.Parent = header
+
+	local closeBtn = create("TextButton", {
+		Size = UDim2.new(0, 24, 0, 24),
+		Position = UDim2.new(1, -28, 0.5, -12),
+		BackgroundColor3 = Theme.warn,
+		Text = "X",
+		TextColor3 = Color3.new(1, 1, 1),
+		Font = FONT_B,
+		TextSize = 14,
+	}, {})
+	addCorner(closeBtn, 6)
+	closeBtn.Parent = header
+
+	local minimizeBtn = create("TextButton", {
+		Size = UDim2.new(0, 24, 0, 24),
+		Position = UDim2.new(1, -56, 0.5, -12),
+		BackgroundColor3 = Theme.control,
+		Text = "_",
+		TextColor3 = Theme.text,
+		Font = FONT_B,
+		TextSize = 14,
+	}, {})
+	addCorner(minimizeBtn, 6)
+	minimizeBtn.Parent = header
+
+	do
+		local dragging = false
+		local dragStart
+		local startPos
+
+		header.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = true
+				dragStart = input.Position
+				startPos = window.Position
+			end
+		end)
+
+		UIS.InputChanged:Connect(function(input)
+			if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local delta = input.Position - dragStart
+				window.Position = UDim2.new(
+					startPos.X.Scale, startPos.X.Offset + delta.X,
+					startPos.Y.Scale, startPos.Y.Offset + delta.Y
+				)
+			end
+		end)
+
+		UIS.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging = false
+			end
+		end)
+	end
+
+	local tabsStrip = create("ScrollingFrame", {
+		Name = "Tabs",
+		Size = UDim2.new(1, 0, 0, 44),
+		Position = UDim2.new(0, 0, 0, 40),
+		BackgroundColor3 = Theme.panel2,
+		ScrollBarThickness = 4,
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+	}, {})
+	tabsStrip.Parent = window
+	addCorner(tabsStrip, 10)
+	addStroke(tabsStrip, Theme.stroke, 1, 0.5)
+	addPadding(tabsStrip, 6)
+
+	local tabsLayout = Instance.new("UIListLayout")
+	tabsLayout.FillDirection = Enum.FillDirection.Horizontal
+	tabsLayout.Padding = UDim.new(0, 6)
+	tabsLayout.Parent = tabsStrip
+
+	local content = create("Frame", {
+		Name = "Content",
+		Size = UDim2.new(1, 0, 1, -80),
+		Position = UDim2.new(0, 0, 0, 80),
+		BackgroundColor3 = Theme.bg,
+	}, {})
+	content.Parent = window
+	addPadding(content, 6)
+
+	local hidden = false
+	local shownHint = false
+
+	local function showHint()
+		if shownHint then return end
+		if isMobile() then return end
+		shownHint = true
+	end
+
+	closeBtn.MouseButton1Click:Connect(function()
+		gui:Destroy()
+	end)
+
+	minimizeBtn.MouseButton1Click:Connect(function()
+		hidden = not hidden
+		window.Visible = not hidden
+		minimizeBtn.Text = hidden and "_+" or "_"
+	end)
+
+	local windowAPI = {
+		_window = window,
+		_gui = gui,
+		_content = content,
+		_tabs = {},
+		_currentTab = nil,
+	}
+
+	function windowAPI:AddSection(sectionName)
+		local section = create("Frame", {
+			Name = sectionName .. "_Section",
+			Size = UDim2.new(1, 0, 1, 0),
+			BackgroundColor3 = Theme.panel,
+			BorderSizePixel = 0,
+			Visible = false,
+		}, {})
+		section.Parent = content
+
+		addCorner(section, 10)
+		addStroke(section, Theme.stroke, 1, 0.5)
+		addPadding(section, 8)
+
+		local sectionLayout = Instance.new("UIListLayout")
+		sectionLayout.FillDirection = Enum.FillDirection.Vertical
+		sectionLayout.Padding = UDim.new(0, 6)
+		sectionLayout.Parent = section
+
+		local sectionContent = create("Frame", {
+			Name = "Content",
+			Size = UDim2.new(1, 0, 0, 0),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			AutomaticSize = Enum.AutomaticSize.Y,
+		}, {})
+		sectionContent.Parent = section
+
+		local contentLayout = Instance.new("UIListLayout")
+		contentLayout.FillDirection = Enum.FillDirection.Vertical
+		contentLayout.Padding = UDim.new(0, 6)
+		contentLayout.Parent = sectionContent
+
+		local sectionAPI = {
+			_frame = section,
+			_content = sectionContent,
+			_layout = contentLayout,
+		}
+
+		function sectionAPI:AddUnderSections(...)
+			local titles = {...}
+			local underContainer = create("Frame", {
+				Name = "UnderSections",
+				Size = UDim2.new(1, 0, 0, 0),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				AutomaticSize = Enum.AutomaticSize.Y,
+			}, {})
+			underContainer.Parent = sectionContent
+
+			local underLayout = Instance.new("UIListLayout")
+			underLayout.FillDirection = Enum.FillDirection.Horizontal
+			underLayout.Padding = UDim.new(0, 6)
+			underLayout.Parent = underContainer
+
+			local underSections = {}
+
+			for _, title in ipairs(titles) do
+				local underSection = create("Frame", {
+					Name = title .. "_UnderSection",
+					Size = UDim2.new(1, 0, 0, 0),
+					BackgroundTransparency = 1,
+					BorderSizePixel = 0,
+					AutomaticSize = Enum.AutomaticSize.Y,
+				}, {})
+				underSection.Parent = underContainer
+
+				local underSectionLayout = Instance.new("UIListLayout")
+				underSectionLayout.FillDirection = Enum.FillDirection.Vertical
+				underSectionLayout.Padding = UDim.new(0, 4)
+				underSectionLayout.Parent = underSection
+
+				local underAPI = {
+					_frame = underSection,
+					_content = underSection,
+					_layout = underSectionLayout,
+				}
+
+				-- Добавляем методы для элементов управления
+				function underAPI:Label(text, props)
+					props = props or {}
+					local label = create("TextLabel", {
+						Size = UDim2.new(1, 0, 0, 20),
+						BackgroundTransparency = 1,
+						Text = text,
+						TextColor3 = props.color or Theme.text,
+						Font = props.bold and FONT_B or FONT,
+						TextSize = props.size or 14,
+						TextWrapped = true,
+					}, {})
+					label.Parent = underSection
+					return label
+				end
+
+				function underAPI:Button(text, callback)
+					local btn = create("TextButton", {
+						Size = UDim2.new(1, 0, 0, 32),
+						BackgroundColor3 = Theme.accent,
+						Text = text,
+						TextColor3 = Theme.text,
+						Font = FONT_B,
+						TextSize = 14,
+					}, {})
+					btn.Parent = underSection
+					addCorner(btn, 6)
+					withHover(btn, Theme.accent, Theme.accentDim)
+					btn.MouseButton1Click:Connect(callback)
+					return btn
+				end
+
+				function underAPI:Toggle(text, default, callback)
+					local toggleContainer = create("Frame", {
+						Size = UDim2.new(1, 0, 0, 32),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+					}, {})
+					toggleContainer.Parent = underSection
+
+					local toggleLabel = create("TextLabel", {
+						Size = UDim2.new(1, -40, 1, 0),
+						BackgroundTransparency = 1,
+						Text = text,
+						TextColor3 = Theme.text,
+						Font = FONT,
+						TextSize = 14,
+						TextXAlignment = Enum.TextXAlignment.Left,
+					}, {})
+					toggleLabel.Parent = toggleContainer
+
+					local toggle = create("TextButton", {
+						Size = UDim2.new(0, 32, 1, 0),
+						Position = UDim2.new(1, -32, 0, 0),
+						BackgroundColor3 = default and Theme.good or Theme.control,
+						Text = default and "On" or "Off",
+						TextColor3 = Theme.text,
+						Font = FONT_B,
+						TextSize = 12,
+					}, {})
+					toggle.Parent = toggleContainer
+					addCorner(toggle, 6)
+
+					local state = default or false
+
+					toggle.MouseButton1Click:Connect(function()
+						state = not state
+						toggle.BackgroundColor3 = state and Theme.good or Theme.control
+						toggle.Text = state and "On" or "Off"
+						if callback then callback(state) end
+					end)
+
+					return toggle
+				end
+
+				function underAPI:Slider(text, min, max, default, callback)
+					local sliderContainer = create("Frame", {
+						Size = UDim2.new(1, 0, 0, 50),
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+					}, {})
+					sliderContainer.Parent = underSection
+
+					local sliderLabel = create("TextLabel", {
+						Size = UDim2.new(1, 0, 0, 16),
+						BackgroundTransparency = 1,
+						Text = text .. ": " .. tostring(default or min),
+						TextColor3 = Theme.text,
+						Font = FONT,
+						TextSize = 12,
+					}, {})
+					sliderLabel.Parent = sliderContainer
+
+					local sliderBg = create("Frame", {
+						Size = UDim2.new(1, 0, 0, 6),
+						Position = UDim2.new(0, 0, 0, 20),
+						BackgroundColor3 = Theme.control,
+						BorderSizePixel = 0,
+					}, {})
+					sliderBg.Parent = sliderContainer
+					addCorner(sliderBg, 3)
+
+					local sliderFill = create("Frame", {
+						Size = UDim2.new(0.5, 0, 1, 0),
+						BackgroundColor3 = Theme.accent,
+						BorderSizePixel = 0,
+					}, {})
+					sliderFill.Parent = sliderBg
+					addCorner(sliderFill, 3)
+
+					local sliderBtn = create("TextButton", {
+						Size = UDim2.new(0, 12, 0, 12),
+						Position = UDim2.new(0.5, -6, 0.5, -6),
+						BackgroundColor3 = Theme.accent,
+						Text = "",
+						BorderSizePixel = 0,
+					}, {})
+					sliderBtn.Parent = sliderBg
+					addCorner(sliderBtn, 6)
+
+					local currentValue = default or min
+					local dragging = false
+
+					sliderBtn.InputBegan:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 then
+							dragging = true
+						end
+					end)
+
+					UIS.InputEnded:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 then
+							dragging = false
+						end
+					end)
+
+					UIS.InputChanged:Connect(function(input)
+						if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+							local relX = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+							currentValue = min + (max - min) * relX
+							sliderFill.Size = UDim2.new(relX, 0, 1, 0)
+							sliderLabel.Text = text .. ": " .. tostring(math.floor(currentValue))
+							if callback then callback(currentValue) end
+						end
+					end)
+
+					return sliderBg
+				end
+
+				-- Добавляем методы из extended components
+				extendSectionWithNewComponents(underAPI)
+
+				table.insert(underSections, underAPI)
+			end
+
+			return unpack(underSections)
+		end
+
+		-- Добавляем методы из extended components к main section
+		extendSectionWithNewComponents(sectionAPI)
+
+		table.insert(windowAPI._tabs, sectionAPI)
+
+		if not windowAPI._currentTab then
+			windowAPI._currentTab = sectionAPI
+			sectionAPI._frame.Visible = true
+		end
+
+		return sectionAPI
+	end
+
+	return windowAPI
+end
+
+return RoundedUI
