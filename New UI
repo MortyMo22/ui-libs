@@ -1,6 +1,6 @@
 --!strict
 -- RoundedUI: cross-platform UI library with rounded corners and rich controls
--- VERSION 2.2 — Polish pass: scaling rollback, tab fix, minimize fix, overlap fix
+-- VERSION 2.3 — Tab fix, minimize fix, window open fix
 -- v2.1: UI Scaling, Notifications, TextBox Fix, Animations, Leak Protection
 -- v2.0: ScrollList, Card, Row, Container, SearchBox, Pagination, VirtualList
 
@@ -145,7 +145,7 @@ do
         return self:Play(instance, tweenInfo, goals)
     end
 
-    -- Hover helper: returns connection list; isActiveCheck optional guard
+    -- Hover helper: tracked connections for use with the cleanup registry
     function Anim:Hover(btn, normalColor, hoverColor, registry)
         local reg = registry or _globalCleanup
         local c1 = reg:Add(btn.MouseEnter:Connect(function()
@@ -237,16 +237,13 @@ local function withHover(btn, base, hover)
     btn.MouseLeave:Connect(function() btn.BackgroundColor3 = base end)
 end
 
--- Animated hover — only fires when the button is NOT the active/selected tab.
--- Pass an optional `isActiveCheck` function that returns true when this button
--- is the currently selected one; hover is then suppressed for it.
-local function withHoverAnim(btn, base, hover, isActiveCheck)
+-- Animated hover for controls (buttons, dropdowns, etc.)
+-- NOT used on tab buttons — tabs use direct instant assignment like v2.0
+local function withHoverAnim(btn, base, hover)
     btn.MouseEnter:Connect(function()
-        if isActiveCheck and isActiveCheck() then return end
         Anim:Play(btn, Anim.Fast, { BackgroundColor3 = hover })
     end)
     btn.MouseLeave:Connect(function()
-        if isActiveCheck and isActiveCheck() then return end
         Anim:Play(btn, Anim.Fast, { BackgroundColor3 = base })
     end)
 end
@@ -1101,13 +1098,7 @@ function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
     addStroke(window, Theme.stroke, 1, 0.6)
     addPadding(window, 10)
 
-    -- Window open: subtle scale-in only, no transparency flash
-    do
-        local targetSize = window.Size
-        window.Size = UDim2.new(targetSize.X.Scale * 0.94, targetSize.X.Offset,
-                                targetSize.Y.Scale * 0.94, targetSize.Y.Offset)
-        Anim:Play(window, Anim.Spring, { Size = targetSize })
-    end
+    -- Window open: instant — no animation avoids size glitches on first frame
 
     local header = create("Frame", {
         Size = UDim2.new(1, 0, 0, 32),
@@ -1234,43 +1225,16 @@ function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
         task.delay(8, function() if notif and notif.Parent then notif:Destroy() end end)
     end
 
-    -- Minimize: collapse to header height only (no transparency, no artifact)
-    -- Restore: expand back to full size.
-    local fullSize = window.Size
-    local collapsedSize = UDim2.new(fullSize.X.Scale, fullSize.X.Offset, 0, 32)
-
-    local function doMinimize()
-        window.ClipsDescendants = true
-        Anim:Play(window, Anim.Normal, { Size = collapsedSize })
-    end
-
-    local function doRestore()
-        -- Always refresh fullSize in case of resolution change
-        fullSize = getWindowSize()
-        window.ClipsDescendants = true
-        Anim:Play(window, Anim.Spring, { Size = fullSize })
-        task.delay(0.35, function()
-            window.ClipsDescendants = false
-        end)
-    end
-
+    -- Minimize/restore: simple Visible toggle exactly as in v2.0 — no tween, no artifacts
     addKeybind(Enum.KeyCode.RightShift, function()
         hidden = not hidden
-        if hidden then
-            doMinimize()
-            showHint()
-        else
-            doRestore()
-        end
+        window.Visible = not hidden
+        if hidden then showHint() end
     end)
     minimizeBtn.MouseButton1Click:Connect(function()
         hidden = not hidden
-        if hidden then
-            doMinimize()
-            showHint()
-        else
-            doRestore()
-        end
+        window.Visible = not hidden
+        if hidden then showHint() end
     end)
     closeBtn.MouseButton1Click:Connect(function()
         windowCleanup:Destroy()
@@ -1292,11 +1256,19 @@ function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
         local isFirst = next(tabs) == nil
         local btn = create("TextButton", {
             Size = UDim2.new(0, 120, 1, -12),
-            BackgroundColor3 = isFirst and Theme.accent or Theme.control,
-            Text = tabName, TextColor3 = Theme.text,
-            Font = isFirst and FONT_B or FONT, TextSize = 16,
+            BackgroundColor3 = Theme.control,
+            Text = tabName, TextColor3 = Theme.text, Font = FONT, TextSize = 16,
         }, {})
         addCorner(btn, 8)
+        -- Hover: direct instant assignment (no tween) with active-tab guard — exactly v2.0
+        btn.MouseEnter:Connect(function()
+            if tabs[tabName] and tabs[tabName].page.Visible then return end
+            btn.BackgroundColor3 = Theme.hover
+        end)
+        btn.MouseLeave:Connect(function()
+            if tabs[tabName] and tabs[tabName].page.Visible then return end
+            btn.BackgroundColor3 = Theme.control
+        end)
         btn.Parent = tabsStrip
         recalcTabsCanvas()
 
@@ -1304,28 +1276,14 @@ function RoundedUI.CreateWindow(nameLeft: string, nameRight: string)
             Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = isFirst,
         }, {})
         page.Parent = content
-        tabs[tabName] = { button = btn, page = page, active = isFirst }
-
-        -- Hover: only animates when this tab is NOT selected
-        withHoverAnim(btn, Theme.control, Theme.hover, function()
-            return tabs[tabName] and tabs[tabName].active
-        end)
+        tabs[tabName] = { button = btn, page = page }
+        if isFirst then btn.BackgroundColor3 = Theme.accent; btn.Font = FONT_B end
 
         btn.MouseButton1Click:Connect(function()
             for name, data in pairs(tabs) do
-                local isThis = (name == tabName)
-                data.page.Visible = isThis
-                data.active = isThis
-                -- Set color immediately (no tween fighting) then tween for smoothness
-                if isThis then
-                    -- Selected: accent, bold — cancel any hover tween by setting directly
-                    data.button.BackgroundColor3 = Theme.accent
-                    data.button.Font = FONT_B
-                else
-                    -- Deselected: snap back to control color smoothly
-                    Anim:Play(data.button, Anim.Fast, { BackgroundColor3 = Theme.control })
-                    data.button.Font = FONT
-                end
+                data.page.Visible = (name == tabName)
+                data.button.BackgroundColor3 = (name == tabName) and Theme.accent or Theme.control
+                data.button.Font = (name == tabName) and FONT_B or FONT
             end
         end)
 
