@@ -15,40 +15,17 @@
 -- ── 1. Resolve module paths ───────────────────────────────────────────────────
 -- When loaded via loadstring the script has no parent, so we use relative
 -- requires.  Adjust this block if you host files differently.
-local BASE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/main/RoundedUI/"
 
 local function req(path)
-    local url = BASE_URL .. path .. ".lua"
-
-    print("[RoundedUI] Loading:", path)
-    print("[RoundedUI] URL:", url)
-
-    local src = game:HttpGet(url)
-
-    local fn, err = loadstring(src)
-
-    if not fn then
-        error(
-            "\n========== COMPILE ERROR ==========\n" ..
-            "Module: " .. path .. "\n" ..
-            "URL: " .. url .. "\n" ..
-            tostring(err) ..
-            "\n===================================\n"
-        )
+    -- Works in both ModuleScript trees and raw loadstring environments.
+    -- For raw loadstring: replace this with your own HttpGet loader.
+    if script and script:FindFirstChild(path:gsub("/", ".")) then
+        return require(script:FindFirstChild(path:gsub("/", ".")))
     end
-
-    local ok, result = pcall(fn)
-
-    if not ok then
-        error(
-            "\n========== RUNTIME ERROR ==========\n" ..
-            "Module: " .. path .. "\n" ..
-            tostring(result) ..
-            "\n===================================\n"
-        )
-    end
-
-    return result
+    -- Fallback: load from the same GitHub URL base as the entry point.
+    -- Replace BASE_URL with wherever your files are hosted.
+    local BASE_URL = "https://raw.githubusercontent.com/MortyMo22/RoundedUI/refs/heads/main/RoundedUI/"
+    return loadstring(game:HttpGet(BASE_URL .. path .. ".lua"))()
 end
 
 -- ── 2. Load all modules ───────────────────────────────────────────────────────
