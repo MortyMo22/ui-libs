@@ -24,7 +24,7 @@ local function req(path)
     end
     -- Fallback: load from the same GitHub URL base as the entry point.
     -- Replace BASE_URL with wherever your files are hosted.
-    local BASE_URL = "https://raw.githubusercontent.com/MortyMo22/RoundedUI/refs/heads/main/RoundedUI/"
+    local BASE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/RoundedUI/"
     return loadstring(game:HttpGet(BASE_URL .. path .. ".lua"))()
 end
 
