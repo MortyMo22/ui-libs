@@ -15,8 +15,7 @@
 -- ── 1. Resolve module paths ───────────────────────────────────────────────────
 -- When loaded via loadstring the script has no parent, so we use relative
 -- requires.  Adjust this block if you host files differently.
-
-local BASE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/RoundedUI/"
+local BASE_URL = "https://raw.githubusercontent.com/MortyMo22/ui-libs/main/RoundedUI/"
 
 local function req(path)
     local url = BASE_URL .. path .. ".lua"
